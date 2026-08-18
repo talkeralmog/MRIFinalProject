@@ -246,7 +246,7 @@ def introduction(R: Results) -> List[Dict]:
         "each of two reconstruction methods can undo.")]
 
     out += [callout(
-        "Undersampling is not free: the trade-off from the image-formation lecture",
+        "Undersampling is not free: resolution, SNR and scan time are coupled",
         "Acceleration costs us two things. <b>(i) SNR.</b> Noise in MRI is "
         "dominated by Johnson noise from thermal agitation in the coil and sample, whose "
         "variance grows with the receiver bandwidth, while the signal integrates over the "
@@ -286,7 +286,8 @@ def introduction(R: Results) -> List[Dict]:
         "why.")]
 
     out += [h2("1.2  Choosing which lines to skip"), p(
-        "Phase-encode lines are not interchangeable. Our lecture notes state the asymmetry directly: shallow phase-encode gradients fill the central lines of k-space and "
+        "Phase-encode lines are not interchangeable, and the asymmetry is worth stating "
+        "directly: shallow phase-encode gradients fill the central lines of k-space and "
         "carry large signal amplitude, while steep gradients fill the outer lines, which "
         "carry small amplitude but the fine spatial detail. Rather than take that on "
         "trust we measured it on our own test set. A single line, DC itself, "
@@ -377,7 +378,7 @@ def introduction(R: Results) -> List[Dict]:
     out += [PAGEBREAK]
 
     out += [h2("1.4  The dataset and its contrast weighting"), p(
-        "We use the course &ldquo;Reconstruction&rdquo; dataset: 3D brain scans stored as "
+        "We use the provided reconstruction dataset: 3D brain scans stored as "
         "NumPy volumes, with per-scan age and sex metadata in three CSV files. Subject identifiers point to an aggregation of open-access structural cohorts, which is "
         "consistent with what the images show. We keep <b>exactly one "
         "slice per subject</b>, the anatomical middle slice along the through-plane "
@@ -405,7 +406,7 @@ def introduction(R: Results) -> List[Dict]:
 
     out += [callout(
         "Reading the sequence back out of the picture",
-        "Contrast in MRI is not a property of tissue alone. The course splits the "
+        "Contrast in MRI is not a property of tissue alone. It is usual to split the "
         "parameters into two groups. The patient brings the <i>intrinsic</i> ones: proton "
         "density, T1 (spin-lattice recovery) and T2 (spin-spin decay). The operator chooses "
         "the <i>extrinsic</i> ones: TR, TE and the flip angle. The image is weighted by "
@@ -429,7 +430,7 @@ def introduction(R: Results) -> List[Dict]:
         "<b>Figure 4. What kind of MRI this is.</b> (a) A central axial slice, with the "
         "three tissue levels measured from it. (b) The intensity histogram pooled over 40 "
         "slices: a large near-zero background outside the head, then a broad soft-tissue "
-        "bulk with the CSF, grey-matter and white-matter levels marked. (c) The course's "
+        "bulk with the CSF, grey-matter and white-matter levels marked. (c) A "
         "relaxation-time table at 1.5&nbsp;T and the inference it supports &mdash; CSF is "
         "the most proton-dense of the three tissues yet the darkest here, an ordering only "
         "a T1-weighted acquisition produces.")]
@@ -570,14 +571,14 @@ def introduction(R: Results) -> List[Dict]:
         "value with peak&nbsp;=&nbsp;1.0; Table 4 gives both."), p(
         "While preparing this report we checked the ground truth channel by channel and "
         "found this: <b>the imaginary channel of the "
-        "reference images is identically zero</b>. The course volumes are reconstructed "
+        "reference images is identically zero</b>. The provided volumes are reconstructed "
         "magnitude images, not complex data; all 4,790 cached slices have "
         "max|Im|&nbsp;=&nbsp;0 exactly, and the real channel is non-negative. Our pipeline "
         "is complex-valued (it carries a two-channel real/imaginary tensor end to "
         "end, and the forward model and data-consistency steps use a true complex FFT), so "
         "it would carry phase if the data had any; the dataset simply does not. This does "
         "not invalidate the required metric, but it changes what the imaginary channel "
-        "measures &mdash; and the reason is a symmetry straight out of the course.")]
+        "measures, and the reason is a standard symmetry of the Fourier transform.")]
 
     pairs = [float(r["conjugate pairs kept"]) for r in herm]
     share = [float(r["imag energy share"]) for r in herm]
@@ -1284,7 +1285,7 @@ def results_part2(R: Results) -> List[Dict]:
         "PSNR and SSIM are the two metrics we report in full, but "
         "they are generic image-similarity measures and this dataset has a property that "
         "makes them flattering: the head occupies well under half the frame, so both metrics "
-        "are partly rewarding a method for keeping the background empty. Our lectures draw "
+        "are partly rewarding a method for keeping the background empty. MRI already draws "
         "the distinction we need here, between SNR and <b>CNR</b>. CNR is the more important "
         "one clinically. A reconstruction can score respectably on PSNR and be "
         "useless if it has flattened the grey-matter / white-matter difference, because that "
@@ -1293,8 +1294,8 @@ def results_part2(R: Results) -> List[Dict]:
     out += [p(
         "We therefore added a third measurement. On every test slice we "
         "segment white matter and grey matter by intensity percentile <i>on the reference "
-        "image</i> (a threshold-based segmentation of the kind the course's "
-        "intensity-histogram lecture describes), so the same voxels are compared in all "
+        "image</i> (a simple threshold on the intensity histogram), so the same voxels are "
+        "compared in all "
         "images, and measure two quantities, the relative white-matter / grey-matter "
         "contrast and the contrast-to-noise ratio:"),
         equation("contrast", 11.0), p(
@@ -1759,7 +1760,7 @@ def conclusions(R: Results) -> List[Dict]:
     ])]
 
     out += [h2("5.1  Limitations"), p(
-        "<b>The dataset is not complex.</b> The course volumes are reconstructed magnitude "
+        "<b>The dataset is not complex.</b> The provided volumes are reconstructed magnitude "
         "images, so the imaginary channel of the ground truth is identically zero. Our "
         "pipeline is complex-valued throughout and would carry phase if there were any, but "
         "the required per-channel metric therefore measures suppression of artefactual phase "
@@ -2067,14 +2068,12 @@ def appendices(R: Results) -> List[Dict]:
         "J. Zhang, B. Ghanem. <i>ISTA-Net: Interpretable Optimization-Inspired Deep Network "
         "for Image Compressive Sensing.</i> CVPR, 2018. (An alternative unrolling, "
         "implemented in <tt>src/baselines/</tt>.)",
-        "R. Shaul, I. David, O. Shitrit, T. Riklin Raviv. <i>Subsampled brain MRI "
-        "reconstruction by generative adversarial neural networks.</i> Medical Image "
-        "Analysis, 2020.",
-        "T. Riklin Raviv. <i>Magnetic Resonance Imaging 361.2.6501</i>, course lectures: "
-        "class 3 (contrast mechanisms, relaxation times), class 5 (gradients and "
-        "encoding), class 6 (image formation, k-space filling, resolution / SNR / CNR / "
-        "scan-time trade-offs).",
-        "C. Westbrook. <i>MRI at a Glance.</i> (Course reference text.)",
+        "E. M. Haacke, R. W. Brown, M. R. Thompson, R. Venkatesan. <i>Magnetic Resonance "
+        "Imaging: Physical Principles and Sequence Design.</i> Wiley, 1999. (Encoding, "
+        "k-space, and the resolution / SNR / scan-time relations used throughout.)",
+        "Z.-P. Liang, P. C. Lauterbur. <i>Principles of Magnetic Resonance Imaging: A "
+        "Signal Processing Perspective.</i> IEEE Press, 2000. (Hermitian symmetry and "
+        "partial-Fourier reconstruction.)",
     ])]
 
     return out

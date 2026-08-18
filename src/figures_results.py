@@ -3,7 +3,7 @@
 
 ``src/analysis.py`` plots PSNR/SSIM averaged over the real and imaginary channels. That
 average turned out to be misleading on this dataset: the ground-truth imaginary channel
-is identically zero (the course volumes are magnitude images), so the imaginary-channel
+is identically zero (the provided volumes are magnitude images), so the imaginary-channel
 metric measures suppression of the spurious phase that the non-Hermitian mask injects,
 not phase fidelity -- and its absolute dB is inflated because the MSE is taken against
 zero. See ``src/figures_mri.hermitian_figure``.

@@ -16,7 +16,7 @@ projection at the end restores exactness. Since our forward model is noiseless -
 generated the measurements ourselves with an FFT -- there is no reason to keep the
 soft version at inference.
 
-**2. The reconstruction is not constrained to be real.** The course volumes are
+**2. The reconstruction is not constrained to be real.** The provided volumes are
 reconstructed magnitude images, so the target is real-valued and its k-space is
 conjugate-symmetric. Nothing in the network knows this, and its output carries a non-zero
 imaginary part. Projecting onto real images enforces the constraint. This is the

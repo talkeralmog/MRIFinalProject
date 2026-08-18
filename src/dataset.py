@@ -486,7 +486,7 @@ class CachedSliceDataset(Dataset):
 def _load_volume(path: str) -> Optional[np.ndarray]:
     """Load a 3D volume from ``.npy`` or ``.npz`` and squeeze singleton dims.
 
-    ``allow_pickle=True`` is required because the course volumes are stored as pickled
+    ``allow_pickle=True`` is required because the provided volumes are stored as pickled
     NumPy objects. If a file wraps the array in a 0-d object array (e.g. a dict or a
     boxed ndarray), unwrap it before returning.
 

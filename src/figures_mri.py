@@ -3,14 +3,14 @@
 
 ``src/figures.py`` documents the *pipeline* (masks, block diagrams, EDA) and
 ``src/analysis.py`` plots the *results*. This module adds the figures that tie the
-project back to the acquisition physics taught in the course, each measured on our own
+project back to the underlying acquisition physics, each measured on our own
 data rather than quoted from a textbook:
 
 ``energy``
     Where the signal energy actually lives along the phase-encode axis of k-space, for
-    the 478 test slices. Quantifies the lecture's "central k-space lines have large
-    signal amplitude; outer lines have smaller amplitude but carry fine spatial detail"
-    and so justifies the variable-density mask.
+    the 478 test slices. Quantifies the standard statement that central k-space lines
+    carry large signal amplitude while outer lines carry small amplitude but fine
+    spatial detail, and so justifies the variable-density mask.
 ``psf``
     The point spread function of three undersampling schemes at the *same* sampling
     ratio -- low-pass truncation, regular (equispaced) skipping, and our random
@@ -31,7 +31,7 @@ data rather than quoted from a textbook:
 ``contrast``
     The contrast weighting of the dataset, read off the images and the intensity
     histogram (bright white matter, mid-grey cortex, dark CSF => T1-weighted), with the
-    course's relaxation-time table as the reference.
+    published relaxation times as the reference.
 
 None of these need the raw dataset -- they read the pre-extracted slice cache -- so they
 can be regenerated anywhere.
@@ -64,8 +64,8 @@ from .masks import build_mask
 RATIOS = (0.2, 0.3, 0.5)
 N_ROWS = 128
 
-# Proton density and relaxation times of brain tissue at 1.5 T, as given in the course
-# (class 3, "Contrast Mechanism"; source: Medical Imaging Signals & Systems).
+# Proton density and relaxation times of brain tissue at 1.5 T. Standard published
+# values (Prince & Links, Medical Imaging Signals and Systems).
 TISSUE_TABLE = [
     ("White matter", 0.61, 67, 510),
     ("Grey matter", 0.69, 77, 760),
@@ -564,10 +564,10 @@ def contrast_figure(cache_root: str = "cache", slice_index: int = 3) -> plt.Figu
     ax.legend(fontsize=8)
     ax.grid(alpha=0.3)
 
-    # (c) the course's relaxation table and the resulting weighting
+    # (c) the relaxation times and the weighting they imply
     ax = fig.add_subplot(grid[0, 2])
     ax.axis("off")
-    lines = ["Brain tissue at 1.5 T (course, class 3)", "",
+    lines = ["Brain tissue at 1.5 T", "",
              f"{'tissue':<14}{'PD':>6}{'T2 [ms]':>10}{'T1 [ms]':>10}"]
     lines += [f"{name:<14}{pd:>6.2f}{t2:>10.0f}{t1:>10.0f}"
               for name, pd, t2, t1 in TISSUE_TABLE]

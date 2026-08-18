@@ -4,8 +4,8 @@
 PSNR and SSIM -- the two metrics the brief requires -- are generic image-similarity
 measures. A reconstruction can score well on both and still be clinically useless if it
 has flattened the grey-matter/white-matter difference, because that difference is the
-contrast a radiologist actually reads. The course makes the same distinction between SNR
-and CNR: a high-SNR image with low CNR shows nothing.
+contrast a radiologist actually reads. MRI makes the same distinction between SNR and
+CNR: a high-SNR image with low CNR shows nothing.
 
 This module measures, on every test slice, two MRI-native quantities and compares them
 between the fully sampled reference, the classical baseline and our model:
@@ -13,8 +13,8 @@ between the fully sampled reference, the classical baseline and our model:
 ``contrast``
     The relative white-matter/grey-matter contrast,
     ``C = (S_WM - S_GM) / S_WM``, using tissue masks derived from the *reference* image
-    by intensity percentile (a threshold-based segmentation, as in the course's
-    intensity-histogram lecture) so the same voxels are compared in all three images.
+    by intensity percentile (a simple threshold on the intensity histogram) so the same
+    voxels are compared in all three images.
 ``CNR``
     ``(S_WM - S_GM) / sigma_background``, with the noise level estimated in the air
     outside the head. This is the quantity that decides whether the two tissues are
