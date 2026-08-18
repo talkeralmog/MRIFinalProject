@@ -13,7 +13,7 @@ from typing import Dict, List, Sequence
 
 from .report_data import RATIOS, Results
 
-GITHUB_URL = "https://github.com/almogtalker/mri-kspace-reconstruction"
+GITHUB_URL = "https://github.com/talkeralmog/MRIFinalProject"
 
 AUTHORS = ((("Michal Yechezkel"), "322556267"), (("Almog Talker"), "322546680"))
 
@@ -61,6 +61,17 @@ def table(rows: Sequence[Sequence[str]], caption: str = "",
             "align_right_from": align_right_from}
 
 
+def equation(name: str, point_size: float = 11.5) -> Dict:
+    """A display equation, typeset from LaTeX by ``src/figures_equations.py``.
+
+    ``name`` keys into that module's ``EQUATIONS`` dict, so the notation has one source and
+    the PDF and DOCX cannot disagree about it.
+    """
+    return {"type": "equation",
+            "path": os.path.join("results", "figures", "equations", f"eq_{name}.png"),
+            "point_size": point_size}
+
+
 PAGEBREAK = {"type": "pagebreak"}
 
 
@@ -79,6 +90,33 @@ def db(x: float, digits: int = 1) -> str:
 
 def signed(x: float, digits: int = 1) -> str:
     return f"{'+' if x >= 0 else '&minus;'}{abs(x):.{digits}f}"
+
+
+def paired_diff(R: Results, ratio: float, method: str, reference: str,
+                metric: str = "psnr_real") -> Dict[str, float]:
+    """Per-slice paired difference (``method`` minus ``reference``) at one ratio.
+
+    Returns the mean difference, the paired-t statistic, the fraction of pairs on which
+    ``method`` is worse, and n. Pairing is by (seed, slice), so the mask realization is
+    held fixed within each pair.
+    """
+    import math
+    import statistics
+
+    a = {k[2:]: v[metric] for k, v in R.samples.items()
+         if k[0] == method and k[1] == ratio}
+    b = {k[2:]: v[metric] for k, v in R.samples.items()
+         if k[0] == reference and k[1] == ratio}
+    d = [a[k] - b[k] for k in sorted(set(a) & set(b))]
+    n = len(d)
+    if n < 2:
+        return {"n": n, "mean": float("nan"), "t": float("nan"),
+                "worse_frac": float("nan")}
+    mean = statistics.fmean(d)
+    sd = statistics.stdev(d)
+    return {"n": n, "mean": mean,
+            "t": mean / (sd / math.sqrt(n)) if sd else float("nan"),
+            "worse_frac": sum(1 for x in d if x < 0) / n}
 
 
 # ---------------------------------------------------------------------------
@@ -189,9 +227,8 @@ def introduction(R: Results) -> List[Dict]:
         "phase-encode gradient of a different amplitude before each readout moves to a "
         "different <i>k<sub>y</sub></i>. That last point is the reason this project exists. "
         "In a standard 2D Cartesian sequence <b>one repetition fills one line of "
-        "k-space</b>, so"), p(
-        "&nbsp;&nbsp;&nbsp;&nbsp;<b><i>T</i><sub>scan</sub> = <i>N</i><sub>PE</sub> "
-        "&times; TR &times; NSA</b>,"), p(
+        "k-space</b>, so"),
+        equation("scan_time", 12.0), p(
         "and the only factor in it that image reconstruction can touch is "
         "<i>N</i><sub>PE</sub>, the number of phase-encode steps. TR is constrained by the "
         "contrast we want to keep, a T1-weighted image needs a TR comparable to "
@@ -611,6 +648,13 @@ def baseline_model(R: Results) -> List[Dict]:
     ])]
 
     out += [p(
+        "Written out, both methods are solving the same regularized inverse problem: find "
+        "the image that agrees with the acquired lines while being sparse in a wavelet basis "
+        "and having small total variation."),
+        equation("objective", 11.0), p(
+        "and the baseline's third step is the hard projection that enforces the first term "
+        "exactly, rather than trading it off:"),
+        equation("pocs", 11.0), p(
         "Both priors act independently on the real and imaginary channels. The module has "
         "<b>no trainable parameters</b> &mdash; only the iteration count and the two "
         "regularization weights, so the training loop treats it as evaluation-only.")]
@@ -657,6 +701,7 @@ def baseline_model(R: Results) -> List[Dict]:
         "is badly tuned: no setting of these two weights changes its behaviour "
         "materially."))]
 
+    naive = {r: paired_diff(R, r, "classical_cs", "zero_filled") for r in RATIOS}
     out += [h2("2.2  A stronger prior, and a weak one kept for comparison"), p(
         "Our first baseline used a <i>single-level</i> Haar transform, which is the form "
         "usually written down in textbooks. It does not reconstruct, and the reason is "
@@ -665,8 +710,22 @@ def baseline_model(R: Results) -> List[Dict]:
         "subsequent POCS projection largely undoes it; the iteration converges "
         "effectively back onto its own input. On a Shepp-Logan phantom at 30% sampling it "
         "gains <b>+0.13&nbsp;dB</b> over zero-filling, and no value of <tt>lam</tt> across "
-        "four orders of magnitude does better. On the real test set it is statistically "
-        "indistinguishable from zero-filling at every ratio (Table 3). Moving to a "
+        "four orders of magnitude does better. On the real test set (Table 4) it does not "
+        "just fail to help: paired slice by slice against its own zero-filled input, holding "
+        f"the mask fixed within each pair ({naive[0.2]['n']} pairs per ratio), it comes out "
+        "very slightly the <i>wrong</i> side of doing nothing. At 20% and 30% the effect is "
+        "small but consistent &mdash; it is worse on "
+        f"{100 * naive[0.2]['worse_frac']:.0f}% and "
+        f"{100 * naive[0.3]['worse_frac']:.0f}% of pairs, mean "
+        f"{signed(naive[0.2]['mean'], 3)} and {signed(naive[0.3]['mean'], 3)}&nbsp;dB "
+        f"(paired <i>t</i> = {signed(naive[0.2]['t'], 1)} and "
+        f"{signed(naive[0.3]['t'], 1)}). At 50% the direction is no longer consistent: it is "
+        f"worse on only {100 * naive[0.5]['worse_frac']:.0f}% of pairs, i.e. fewer than half, "
+        "so there it really is effectively indistinguishable from zero-filling, even though "
+        f"the mean difference of {signed(naive[0.5]['mean'], 3)}&nbsp;dB is still detectable "
+        f"at n = {naive[0.5]['n']}. The effect sizes are hundredths of a decibel throughout, "
+        "which is the honest summary: <b>the single-level prior does nothing useful, and "
+        "where it does move the number it moves it slightly the wrong way</b>. Moving to a "
         "three-level transform plus a TV term turns the same iteration into a working "
         "reconstruction. We kept the single-level variant in the code as <tt>classical_cs</tt> "
         "and report it throughout as a prior ablation, because the comparison makes a point "
@@ -709,6 +768,12 @@ def our_model(R: Results) -> List[Dict]:
         "ever asked to fill in what was not acquired. Appendix B.2 tests whether that "
         "structure is actually worth anything by comparing against a larger U-Net with no "
         "data-consistency step.")]
+
+    out += [p(
+        "The X-update itself is one line of arithmetic. On the acquired lines it blends the "
+        "current estimate with the measurement; everywhere else it leaves the estimate "
+        "alone:"),
+        equation("data_consistency", 11.0)]
 
     out += [figure(os.path.join(F, "code_stage.png"),
         "<b>Listing 3. The learned data-consistency step</b> (<i>src/model.py</i>). On the "
@@ -763,21 +828,87 @@ def our_model(R: Results) -> List[Dict]:
         "Unrolling has one consequence that makes this an MRI reconstruction rather than a "
         "generic denoiser: the intermediate "
         "state after each stage is itself a complete image estimate that satisfies the "
-        "measurements on the acquired lines. Figure 8 uses that to show the reconstruction "
-        "actually forming: the aliasing is removed progressively, and the error map "
-        "shrinks stage by stage, rather than everything happening inside one opaque forward "
-        "pass. Appendix A.1 confirms the stages are doing real work: "
-        f"PSNR climbs monotonically from {depth[0][1]:.1f} to {depth[-1][1]:.1f}&nbsp;dB as "
-        f"the unrolling goes from {depth[0][0]} to {depth[-1][0]} stages.")]
+        "measurements on the acquired lines. That makes the network auditable one stage at a "
+        "time, and Figure 8 is that audit. It did not show what we expected it to, so what "
+        "follows is what we measured rather than what we set out to illustrate.")]
+
+    out += [p(
+        "<b>The correction a stage can apply is non-negative by construction.</b> In "
+        "<i>src/model.py</i> the synthesis half of a stage is a "
+        "<tt>RobustCNNBlock(channels,&nbsp;2)</tt>, and that block only adds its residual "
+        "path when its input and output widths agree. Here they do not &mdash; 64 feature "
+        "channels in, 2 image channels out &mdash; so <tt>use_residual</tt> evaluates to "
+        "False and the block's <tt>forward</tt> returns "
+        "<tt>relu(out&nbsp;+&nbsp;0.0)</tt>. The update each stage hands to the "
+        "data-consistency step is therefore clipped at zero from below: a stage that needs "
+        "to <i>subtract</i> aliasing cannot, the ReLU saturates, and the stage degenerates "
+        "into an exact identity map.")]
+
+    # Per-stage activity, measured over every comparison checkpoint by
+    # src/postprocess.stage_activity_main and read back here so the prose cannot drift.
+    activity = R.csv_rows("mri_stage_activity.csv")
+    if activity:
+        import statistics as _st
+        n_stages = max(int(r["stage"]) for r in activity)
+        dead_pct, gains = [], []
+        for stage in range(1, n_stages + 1):
+            subset = [r for r in activity if int(r["stage"]) == stage]
+            dead_pct.append(100 * _st.fmean(float(r["dead fraction"]) for r in subset))
+            gains.append(_st.fmean(float(r["mean PSNR gain (dB)"]) for r in subset))
+        n_slices = int(activity[0]["n slices"])
+        n_runs = len({(r["sampling ratio"], r["seed"]) for r in activity})
+        live = [i + 1 for i, d in enumerate(dead_pct) if d == 0.0]
+        early = ", ".join(f"{d:.0f}%" for d in dead_pct[:5])
+        gains_text = ", ".join(f"{signed(g, 2)}" for g in gains)
+
+        out += [p(
+            "That is what happens in practice. Measuring the per-stage correction on "
+            f"{n_slices} test slices in each of the {n_runs} comparison checkpoints, the "
+            f"correction is <i>exactly</i> zero on {early} of slices at stages 1 to 5, and "
+            f"on no slice at all at stages {live[0]} to {live[-1]}. The mean PSNR "
+            "contribution per stage has the same shape, in dB by stage: "
+            f"{gains_text}. On the slice drawn in Figure 8 the pattern is starker still: "
+            "stages 2 to 5 apply a correction of exactly 0.0 and the estimate sits unchanged "
+            "at 19.9&nbsp;dB all the way through stage 5, after which stages 6, 7 and 8 take "
+            "it to 23.8, 26.4 and 38.2&nbsp;dB. The work is done by the <i>last</i> three "
+            f"stages, not the first few, so the effective depth is nearer {len(live) + 2} "
+            f"than {n_stages} and the model carries parameters it never uses. This is the "
+            "architecture and not the plotting: the manual per-stage loop that draws "
+            "Figure 8 reproduces <tt>model.forward()</tt> to a maximum absolute difference "
+            "of 0.0.")]
+
+    out += [p(
+        "<b>This does not contradict the depth sweep of Appendix A.1, and the two results "
+        "have to be kept apart.</b> The sweep trains a <i>separate</i> network at each depth "
+        "and correctly shows that more stages help: going from "
+        f"{depth[0][0]} to {depth[1][0]} stages is worth "
+        f"{signed(depth[1][1] - depth[0][1])}&nbsp;dB, and the curve rises monotonically to "
+        f"{depth[-1][1]:.1f}&nbsp;dB at {depth[-1][0]} stages. Depth is genuinely useful. "
+        "The finding above is a narrower one about a single trained eight-stage network: the "
+        "ReLU stops it from using some of the stages it already has. Both statements are "
+        "true at once, and a reader who merges them will conclude that one of the two must "
+        "be wrong. We report the flaw rather than quietly cropping the figure, because the "
+        "figure is the evidence. The fix is to drop the final ReLU from the synthesis block, "
+        "or to give that block a residual path, so a stage can subtract as well as add; it "
+        "is on the further-work list in section 5.2. Unlike the two projections of section "
+        "4.6b it cannot be applied after the fact &mdash; it changes the network, so every "
+        "model in this report would have to be retrained, and the numbers we quote are the "
+        "ones this architecture actually produced.")]
 
     out += [figure(os.path.join(F, "per_stage_reconstruction.png"),
-        "<b>Figure 8. The reconstruction forming across the unrolled stages.</b> Top row: "
-        "the magnitude estimate after each ADMM stage, with its PSNR; bottom row: the "
-        "absolute error against the ground truth on a shared scale. The leftmost column is "
-        "the zero-filled input the network receives and the rightmost is the reference. Most "
-        "of the aliasing is removed in the first few stages and the later ones refine "
-        "tissue boundaries &mdash; consistent with the depth sweep, where the first three "
-        "stages account for most of the gain.")]
+        "<b>Figure 8. What each unrolled stage actually contributes.</b> Top row: the "
+        "magnitude estimate after each ADMM stage, with its PSNR; second row: the absolute "
+        "error against the ground truth on a shared scale. The leftmost column is the "
+        "zero-filled input the network receives and the rightmost is the reference. Stages "
+        "whose correction is exactly zero, i.e. identity maps, are marked in <b>red</b>: on "
+        "this slice stages 2 to 5 do nothing whatever and the PSNR stays at 19.9&nbsp;dB "
+        "through stage 5, while stages 6, 7 and 8 perform the entire reconstruction. The "
+        "panel beneath the images plots max|correction| per stage on a logarithmic axis, "
+        "which is what makes the dead stages unambiguous rather than merely faint. The cause "
+        "is architectural: the synthesis block ends in a ReLU and has no residual path (64 "
+        "channels in, 2 out, so <tt>use_residual</tt> is False), so a stage's correction can "
+        "only be non-negative and any stage that would need to subtract aliasing saturates "
+        "to exactly zero.")]
 
     return out
 
@@ -850,19 +981,45 @@ def results(R: Results) -> List[Dict]:
         f"{signed(base_gain[1])} and {signed(base_gain[2])}&nbsp;dB, and section 4.7 "
         "argues this is a property of 1D Cartesian undersampling rather than a defect of the "
         "implementation. <b>Our single-level variant does nothing at all</b>: "
-        f"{signed(naive_gain[0])}, {signed(naive_gain[1])} and "
-        f"{signed(naive_gain[2])}&nbsp;dB, i.e. within noise of its own input at every ratio, "
-        "which is the prior ablation promised in section 2.2.")]
+        f"{signed(naive_gain[0], 2)}, {signed(naive_gain[1], 2)} and "
+        f"{signed(naive_gain[2], 2)}&nbsp;dB, i.e. hundredths of a decibel <i>below</i> its "
+        "own input rather than above it. Section 2.2 gives the paired per-slice test behind "
+        "that statement, and this is the prior ablation promised there.")]
+
+    import statistics as _stats
+
+    seeds = sorted({s for (_, _, s, _) in R.samples})
+    pooled_sd = [R.stat(m, r, "psnr_real")[1] for m in ORDER for r in RATIOS]
+    within_sd = [R.stat(m, r, "psnr_real", seed=s)[1]
+                 for m in ORDER for r in RATIOS for s in seeds]
+    within_avg = _stats.fmean(within_sd)
+    ours_within = _stats.fmean([R.stat("admmnet_softthresh", 0.5, "psnr_real", seed=s)[1]
+                                for s in seeds])
 
     out += [p(
-        "Standard deviations are large for every method &mdash; up to 7.7&nbsp;dB for the "
-        "baseline at 50% sampling. That is not measurement noise. Two separate sources are "
-        "pooled into it: slice-to-slice difficulty (subjects differ in head size, "
-        "scanner and how much of the frame the brain fills), and the mask realization, which "
-        "section 4.6 shows dominates. Our model has the <i>smallest</i> spread at 50% "
+        "Standard deviations are large for every method: the pooled figures in Table 4 run "
+        f"from {min(pooled_sd):.2f} to {max(pooled_sd):.2f}&nbsp;dB across the twelve "
+        f"method&nbsp;&times;&nbsp;ratio cells, the largest being the baseline at 50% "
+        "sampling. They should not be read as measurement precision, because they pool two "
+        "sources that behave completely differently, and separating them settles which one "
+        "dominates. Recomputing the standard deviation <i>within</i> a single mask "
+        "realization and then averaging over the three, the slice-to-slice spread is "
+        f"{within_avg:.2f}&nbsp;dB, and it stays inside the narrow band "
+        f"{min(within_sd):.2f}&ndash;{max(within_sd):.2f}&nbsp;dB for <i>every</i> method at "
+        "<i>every</i> ratio. So almost all of the pooled spread is the three-mask lottery of "
+        "section 4.6 &mdash; which lines each realization happened to draw &mdash; rather "
+        "than slice-to-slice difficulty or training noise: condition on one mask and all four "
+        "methods scatter across the test set by the same amount.")]
+    out += [p(
+        "That also reframes the one place the pooled numbers appear to flatter us. Our model "
+        "does have the <i>smallest</i> pooled spread at 50% "
         f"({R.stat('admmnet_softthresh', 0.5, 'psnr_real')[1]:.2f}&nbsp;dB against "
-        f"{R.stat('classical_cs_tv', 0.5, 'psnr_real')[1]:.2f}&nbsp;dB for the baseline), "
-        "i.e. it is not only better on average but more consistent.")]
+        f"{R.stat('classical_cs_tv', 0.5, 'psnr_real')[1]:.2f}&nbsp;dB for the baseline), but "
+        f"its within-mask spread there is {ours_within:.2f}&nbsp;dB, i.e. the same as "
+        "everyone else's. The gap is a mask-lottery artefact &mdash; the three realizations "
+        "happened to move the baseline further than they moved us, which is consistent with "
+        "the lower mask-energy correlation we report for our model in section 4.6 &mdash; not "
+        "evidence that our reconstruction is more consistent from slice to slice.")]
 
 
     # ---- 4.1b magnitude metrics --------------------------------------------
@@ -880,9 +1037,11 @@ def results(R: Results) -> List[Dict]:
             "a method for the spurious imaginary component the non-Hermitian mask injects. "
             "Scoring Re(<i>x</i>) alone ignores that component; scoring Im(<i>x</i>) "
             "against a zero reference over-rewards any method free to output zero there. "
-            "We therefore recomputed the whole comparison on "
-            "|<i>x</i>|&nbsp;=&nbsp;&radic;(Re&sup2;&nbsp;+&nbsp;Im&sup2;), over the same "
-            "1434 slice-mask pairs. Table 4b gives the result next to the per-channel numbers, and Figure 9c plots it.")]
+            "We therefore recomputed the whole comparison on the magnitude, over the same "
+            "1434 slice-mask pairs."),
+            equation("magnitude", 11.5), p(
+            "Table 4b gives the result next to the per-channel numbers, and Figure 9c "
+            "plots it.")]
 
         rows = [["Ratio", "Method", "PSNR |x| (dB)", "SSIM |x|", "PSNR Re(x) (dB)",
                  "&Delta; PSNR"]]
@@ -1116,14 +1275,12 @@ def results_part2(R: Results) -> List[Dict]:
         "segment white matter and grey matter by intensity percentile <i>on the reference "
         "image</i> (a threshold-based segmentation of the kind the course's "
         "intensity-histogram lecture describes), so the same voxels are compared in all "
-        "images, and measure two quantities: the relative contrast "
-        "<i>C</i>&nbsp;=&nbsp;(<i>S</i><sub>WM</sub>&nbsp;&minus;&nbsp;<i>S</i><sub>GM</sub>)"
-        "/<i>S</i><sub>WM</sub>, and the contrast-to-noise ratio "
-        "(<i>S</i><sub>WM</sub>&nbsp;&minus;&nbsp;<i>S</i><sub>GM</sub>)/"
-        "<i>&sigma;</i><sub>background</sub>, with the noise level estimated in the air "
-        "outside the head. Both are reported as a ratio to the fully sampled reference, so "
-        "1.00 means the contrast survived intact. Table 5 gives the numbers and Figure 13 "
-        "plots the retention ratios.")]
+        "images, and measure two quantities, the relative white-matter / grey-matter "
+        "contrast and the contrast-to-noise ratio:"),
+        equation("contrast", 11.0), p(
+        "with the noise level estimated in the air outside the head. Both are reported as a "
+        "ratio to the fully sampled reference, so 1.00 means the contrast survived intact. "
+        "Table 5 gives the numbers and Figure 13 plots the retention ratios.")]
 
     rows = [["Ratio", "Method", "WM/GM contrast", "Contrast retained", "WM&ndash;GM CNR",
              "CNR retained"]]
@@ -1526,7 +1683,8 @@ def conclusions(R: Results) -> List[Dict]:
                 if row["method"] == "admmnet_softthresh"), float("nan"))
     zp = R.csv_rows("mri_zeropad.csv")
     zp_by = {(float(row["sampling ratio"]), row["method"]): row for row in zp}
-    lowres_margin = [
+    # Our model's margin over the matched-scan-time low-resolution control (section 4.8).
+    ours_vs_lowres = [
         float(zp_by[(r, "ADMM-Net (ours)")]["PSNR real mean (dB)"])
         - float(zp_by[(r, "low-res zero-padded (central lines only)")]
                 ["PSNR real mean (dB)"]) for r in RATIOS] if zp else [float("nan")]
@@ -1569,7 +1727,7 @@ def conclusions(R: Results) -> List[Dict]:
         "reconstruction.</b> Acquiring the same number of lines contiguously at the centre "
         "of k-space and zero-padding beats our tuned compressed-sensing baseline by 11 to "
         f"17 dB at matched scan time. Our model still clears that control by "
-        f"{min(lowres_margin):.1f} to {max(lowres_margin):.1f} dB, so "
+        f"{min(ours_vs_lowres):.1f} to {max(ours_vs_lowres):.1f} dB, so "
         "the learned reconstruction buys real resolution rather than re-interpolating a "
         "blurred image, but any claim that reconstruction beats simply scanning coarser has "
         "to be tested rather than assumed. We would not have known this without running it.",
@@ -1607,6 +1765,12 @@ def conclusions(R: Results) -> List[Dict]:
         "classical baseline does not "
         "share. The fix is the first item below.")]
     out += [p(
+        "<b>Part of our own network is inactive.</b> The stage-by-stage audit in section 3 "
+        "found that the synthesis block's final ReLU forces every stage's correction to be "
+        "non-negative, so on a typical slice roughly a third of the eight stages apply no "
+        "correction at all and the reconstruction is carried by the last three; fixing it "
+        "requires retraining, and it is on the further-work list below.")]
+    out += [p(
         "<b>Our metrics are proxies.</b> PSNR and SSIM, and even the contrast and CNR "
         "measures we added, do not certify that a reconstruction is diagnostically safe. That "
         "would require a radiologist reading study or a downstream task metric (lesion "
@@ -1623,6 +1787,12 @@ def conclusions(R: Results) -> List[Dict]:
         "most of the variance we observed.",
         "<b>Extend data consistency to multi-coil</b> with sensitivity maps, which is the step "
         "that would make the forward model resemble a real accelerated acquisition.",
+        "<b>Remove the final ReLU from the synthesis block</b> (or give that block a residual "
+        "path) so a stage's correction can be negative as well as positive. Section 3 shows "
+        "that as built, early stages saturate to exact identity maps and the last three "
+        "stages do the reconstruction, so this should recover the capacity we are already "
+        "paying for. Unlike the projections of section 4.6b it changes the network rather "
+        "than its output, so it needs retraining and we could not apply it post hoc.",
         "<b>Replace the fixed eight-stage unrolling with a learned stopping criterion</b>, so "
         "easy slices spend fewer stages; the depth sweep in Appendix A.1 shows the "
         "marginal value of a stage falls sharply after the third.",

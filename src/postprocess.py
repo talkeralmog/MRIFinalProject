@@ -282,3 +282,107 @@ def main(argv=None) -> List[Dict]:
 
 if __name__ == "__main__":
     main()
+
+
+# ---------------------------------------------------------------------------
+# Per-stage audit: which unrolled stages actually do anything
+# ---------------------------------------------------------------------------
+
+
+@torch.no_grad()
+def stage_activity(checkpoint_path: str, cache_root: str = "cache", device: str = "cpu",
+                   limit: int = 96, batch: int = 32) -> Tuple[List[Dict], float, int]:
+    """How often each unrolled stage applies a correction, and what it contributes.
+
+    The synthesis block of ``CustomADMMStage`` ends in a ReLU and has no residual path
+    (its input and output channel counts differ), so the correction a stage adds to the
+    image is non-negative by construction. A stage that would need to subtract therefore
+    saturates to exactly zero and becomes an identity map. This measures how often that
+    happens, per stage, so the report can quote it rather than assert it.
+    """
+    ckpt = load_checkpoint(checkpoint_path, map_location=device)
+    cfg = ckpt["config"]
+    kwargs = {k: v for k, v in cfg["model"].items() if k != "name"}
+    model = MODEL_REGISTRY.build(cfg["model"]["name"], **kwargs).to(device).eval()
+    model.load_state_dict(ckpt["state_dict"])
+
+    size = cfg["data"]["image_size"]
+    params = {k: v for k, v in cfg["mask"].items() if k != "name"}
+    params.setdefault("seed", cfg["train"]["seed"])
+    mask, _ = build_mask(cfg["mask"]["name"], (size, size), device, **params)
+
+    slices, _ = load_cached_test_split(cache_root)
+    n_slices = min(limit, slices.shape[0])
+    n_stages = len(model.stages)
+    dead = np.zeros(n_stages)
+    gain = np.zeros(n_stages)
+
+    for start in range(0, n_slices, batch):
+        label = slices[start : start + batch].to(device)
+        count = label.shape[0]
+        y = mask * fft2c(chan_to_complex(label))
+        x = complex_to_chan(ifft2c(y))
+        z = torch.zeros(count, model.channels, size, size, device=device, dtype=x.dtype)
+        m = torch.zeros_like(z)
+        previous = psnr_channel(x[:, 0].clamp(-1, 1), label[:, 0])
+        for index, stage in enumerate(model.stages):
+            c = stage.analysis(x)
+            z_new = stage.nonlinearity(c + m)
+            m_new = m + c - z_new
+            correction = stage.synthesis(z_new - m_new)
+            x = stage.data_consistency(x + correction, y, mask)
+            z, m = z_new, m_new
+            dead[index] += float((correction.abs().amax(dim=(1, 2, 3)) == 0).sum())
+            current = psnr_channel(x[:, 0].clamp(-1, 1), label[:, 0])
+            gain[index] += float((current - previous).sum())
+            previous = current
+
+    rows = [{
+        "sampling ratio": float(cfg["mask"]["sampling_ratio"]),
+        "seed": int(cfg["train"]["seed"]),
+        "stage": index + 1,
+        "dead fraction": round(dead[index] / n_slices, 4),
+        "mean PSNR gain (dB)": round(gain[index] / n_slices, 4),
+        "n slices": n_slices,
+    } for index in range(n_stages)]
+    return rows, float(cfg["mask"]["sampling_ratio"]), int(cfg["train"]["seed"])
+
+
+def stage_activity_main(argv=None) -> List[Dict]:
+    """Write ``results/figures/mri_stage_activity.csv`` for every comparison checkpoint."""
+    args = parse_args(argv)
+    cfg = load_config(args.config, cli_overrides=args.set)
+    results_root = cfg["paths"]["results_root"]
+    out_dir = os.path.join(results_root, "figures")
+    os.makedirs(out_dir, exist_ok=True)
+
+    rows: List[Dict] = []
+    for ratio in args.ratios:
+        for seed in args.seeds:
+            ckpt = _find_checkpoint(results_root, ratio, seed)
+            if ckpt is None:
+                continue
+            run_rows, actual_ratio, actual_seed = stage_activity(
+                ckpt, args.cache_root, args.device)
+            rows.extend(run_rows)
+            dead = [r["dead fraction"] for r in run_rows]
+            print(f"  ratio={actual_ratio} seed={actual_seed}: dead fraction per stage = "
+                  + " ".join(f"{v:.2f}" for v in dead))
+
+    if not rows:
+        return rows
+    path = os.path.join(out_dir, "mri_stage_activity.csv")
+    with open(path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+    print(f"wrote {path}")
+
+    n_stages = max(r["stage"] for r in rows)
+    print("\npooled over all runs:")
+    for stage in range(1, n_stages + 1):
+        subset = [r for r in rows if r["stage"] == stage]
+        dead = 100 * float(np.mean([r["dead fraction"] for r in subset]))
+        gain = float(np.mean([r["mean PSNR gain (dB)"] for r in subset]))
+        print(f"  stage {stage}: dead on {dead:5.1f}% of slices, mean gain {gain:+.2f} dB")
+    return rows

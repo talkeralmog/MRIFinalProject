@@ -83,6 +83,12 @@ def main(argv=None) -> List[str]:
                 elif kind == "figure":
                     f.write(f"[FIGURE {os.path.basename(b['path'])}] "
                             f"{plain_text(b.get('caption', ''))}\n\n")
+                elif kind == "equation":
+                    # The text dump carries the LaTeX source, so the review passes can read
+                    # the mathematics rather than an opaque filename.
+                    from .figures_equations import EQUATIONS
+                    name = os.path.basename(b["path"])[3:-4]
+                    f.write(f"[EQUATION] {EQUATIONS.get(name, name)}\n\n")
         written.append(path)
 
     for path in written:

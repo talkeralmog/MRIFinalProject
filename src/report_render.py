@@ -31,9 +31,15 @@ ENTITIES = {
     "&rsquo;": "’", "&hellip;": "…", "&amp;": "&",
     "&lt;": "<", "&gt;": ">", "&asymp;": "≈", "&le;": "≤",
     "&ge;": "≥", "&rarr;": "→", "&equiv;": "≡",
+    "&sup2;": "²", "&sup3;": "³", "&frac12;": "½",
 }
 
 _TAG = re.compile(r"</?(?:b|i|sub|sup|u|tt|br\s*/?|link[^>]*)>", re.I)
+
+#: The font size and resolution src/figures_equations.py renders at. Both back-ends
+#: rescale from these so a displayed equation matches the body text.
+EQ_RENDER_PT = 17.0
+EQ_RENDER_DPI = 320.0
 
 
 def to_unicode(markup: str) -> str:
@@ -287,6 +293,22 @@ def render_pdf(blocks: Sequence[Dict], out_path: str) -> str:
             story.append(KeepTogether(group) if b.get("keep", True) else group[0])
             if not b.get("keep", True):
                 story += group[1:]
+        elif kind == "equation":
+            # Rendered by src/figures_equations.py at EQ_RENDER_PT / EQ_RENDER_DPI, so the
+            # glyphs land at `point_size` whatever the equation's pixel width happens to be.
+            path = b["path"]
+            if not os.path.exists(path):
+                story.append(para(f"<i>[missing equation: {path}]</i>", "caption"))
+                continue
+            iw, ih = ImageReader(path).getSize()
+            scale = (72.0 / EQ_RENDER_DPI) * (b.get("point_size", 10.5) / EQ_RENDER_PT)
+            width, height = iw * scale, ih * scale
+            if width > content_w * 0.94:                    # never overflow the column
+                height *= content_w * 0.94 / width
+                width = content_w * 0.94
+            img = Image(path, width=width, height=height)
+            img.hAlign = "CENTER"
+            story += [Spacer(1, 5), img, Spacer(1, 6)]
         elif kind == "pagebreak":
             story.append(PageBreak())
         elif kind == "spacer":
@@ -496,6 +518,22 @@ def render_docx(blocks: Sequence[Dict], out_path: str) -> str:
             p.add_run().add_picture(path, width=Cm(width_cm))
             if b.get("caption"):
                 add(b["caption"], size=8.7, colour=CAPTION_INK, space_after=9)
+        elif kind == "equation":
+            path = b["path"]
+            if not os.path.exists(path):
+                add(f"<i>[missing equation: {path}]</i>", size=8.7, colour=CAPTION_INK)
+                continue
+            from PIL import Image as PILImage
+            iw, ih = PILImage.open(path).size
+            # Points -> centimetres, matching the PDF's sizing rule exactly.
+            scale = (72.0 / EQ_RENDER_DPI) * (b.get("point_size", 10.5) / EQ_RENDER_PT)
+            width_cm = iw * scale / 72.0 * 2.54
+            width_cm = min(width_cm, usable_cm * 0.94)
+            p = document.add_paragraph()
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            p.paragraph_format.space_before = Pt(5)
+            p.paragraph_format.space_after = Pt(6)
+            p.add_run().add_picture(path, width=Cm(width_cm))
         elif kind == "pagebreak":
             document.add_page_break()
         elif kind == "spacer":
