@@ -1,0 +1,20 @@
+# Authors: Michal Yechezkel (ID: 322556267), Almog Talker (ID: 322546680)
+# Reference experiment: a plain U-Net on the zero-filled image.
+# The U-Net has no unrolled optimization and no data-consistency step -- it learns a
+# direct image-to-image mapping. Comparing it with ADMM-Net isolates how much of our
+# model's advantage comes from the model-based structure (the k-space data-consistency
+# step) rather than from network capacity alone. channels=32 / depth=2 gives 467,554
+# parameters against ADMM-Net's 317,320, so the U-Net is if anything the larger model --
+# any win for ADMM-Net cannot be attributed to capacity.
+# One seed per sampling ratio: this is a supporting reference, not a headline result.
+base: configs/default.yaml
+
+fixed:
+  name: unet_reference
+  model.name: unet
+  model.channels: 32
+  model.depth: 2
+
+grid:
+  mask.sampling_ratio: [0.2, 0.3, 0.5]
+  train.seed: [0]

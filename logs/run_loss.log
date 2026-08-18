@@ -1,0 +1,11 @@
+nohup: ignoring input
+sweep: configs/experiments/loss_ablation.yaml
+base: configs/default.yaml | runs: 4 | already complete: 27
+results csv: ./results/runs.csv
+
+[1/4] SKIP  loss_ablation_f5f7ad568a  loss.name=mse, train.seed=0
+[2/4] SKIP  loss_ablation_c1b4a1db93  loss.name=mse_l1, train.seed=0
+[3/4] SKIP  loss_ablation_f5ac4de9b4  loss.name=ssim, train.seed=0
+[4/4] SKIP  loss_ablation_9c89b5f19b  loss.name=kspace, train.seed=0
+
+sweep done | ran=0 skipped=4 failed=0

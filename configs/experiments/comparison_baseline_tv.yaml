@@ -1,0 +1,20 @@
+# Authors: Michal Yechezkel (ID: 322556267), Almog Talker (ID: 322546680)
+# The report's classical baseline, added to the headline comparison.
+# Kept in a separate sweep file (rather than extending comparison.yaml's grid with new
+# `model.*` keys) because the run id is a hash of the whole config: adding keys there
+# would change the ids of the already-completed ADMM-Net runs and force a full retrain.
+# `name: comparison` puts these rows in the same experiment family as those runs, so the
+# analysis picks them up together.
+#
+# The tuned `lam` / `tv_weight` come from the class defaults in
+# src/baselines/classical_cs.py (see configs/experiments/baseline_tuning.yaml).
+# Evaluation-only: all 9 runs finish in minutes.
+base: configs/default.yaml
+
+fixed:
+  name: comparison
+  model.name: classical_cs_tv
+
+grid:
+  mask.sampling_ratio: [0.2, 0.3, 0.5]
+  train.seed: [0, 1, 2]

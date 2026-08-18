@@ -1,0 +1,33 @@
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.pytest_cache/
+.hypothesis/
+
+# Do NOT upload datasets or medical image files (course requirement)
+data/
+*.npy
+*.npz
+
+# Pre-extracted slice cache: derived from the dataset, so it is data too
+cache/
+results/**/cache/
+
+# Training artifacts (checkpoints can be large); results/figures IS committed
+*.pth
+*.pt
+results/**/*.pth
+results/**/*.pt
+results/**/last.pth
+
+# Local smoke-test scratch
+_smoke_*/
+.DS_Store
+*.DS_Store
+
+# report-building virtualenv and review scratch
+.venv_report/
+.review/
+
+# Course lecture PDFs (copyrighted material - do not publish)
+MRI_LECTURES/

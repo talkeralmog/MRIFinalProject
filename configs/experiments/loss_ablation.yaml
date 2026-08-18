@@ -1,0 +1,22 @@
+# Authors: Michal Yechezkel (ID: 322556267), Almog Talker (ID: 322546680)
+# Appendix ablation 2/3: training objective.
+# Contrasts image-domain (mse, mse_l1), structural (ssim), and frequency-domain
+# (kspace, i.e. measurement/data consistency) losses. Everything else is held at the
+# default so metric differences are attributable to the loss alone.
+#
+# epochs is 100 here (against 40 for the headline comparison) so that every variant gets
+# the same, generous training budget and the comparison is not confounded by one variant
+# converging more slowly. Note that `train.epochs` enters the run-id hash, so editing it
+# invalidates the completed runs and forces a full retrain -- leave it at the value the
+# reported results were produced with.
+base: configs/default.yaml
+
+fixed:
+  name: loss_ablation
+  model.name: admmnet_softthresh
+  mask.sampling_ratio: 0.3
+  train.epochs: 100
+
+grid:
+  loss.name: [mse, mse_l1, ssim, kspace]
+  train.seed: [0]

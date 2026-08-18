@@ -1,0 +1,13 @@
+sampling ratio,metric,our model wins,pairs,win rate
+0.2,psnr_real,1434,1434,1.0
+0.2,psnr_imag,1434,1434,1.0
+0.2,ssim_real,1434,1434,1.0
+0.2,ssim_imag,1434,1434,1.0
+0.3,psnr_real,1434,1434,1.0
+0.3,psnr_imag,1383,1434,0.9644
+0.3,ssim_real,1434,1434,1.0
+0.3,ssim_imag,1420,1434,0.9902
+0.5,psnr_real,1434,1434,1.0
+0.5,psnr_imag,1434,1434,1.0
+0.5,ssim_real,1434,1434,1.0
+0.5,ssim_imag,1432,1434,0.9986

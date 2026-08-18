@@ -1,0 +1,13 @@
+sampling ratio,lines acquired,method,PSNR real mean (dB),PSNR real std (dB),SSIM real mean,SSIM real std,n slices
+0.2,26,low-res zero-padded (central lines only),33.278,1.946,0.8614,0.0279,478
+0.2,26,zero-filled (variable density),21.509,1.83,0.2972,0.0791,478
+0.2,26,classical CS (TV),21.927,1.847,0.2848,0.0703,478
+0.2,26,ADMM-Net (ours),39.226,1.824,0.9557,0.0143,478
+0.3,38,low-res zero-padded (central lines only),35.832,1.895,0.9291,0.0149,478
+0.3,38,zero-filled (variable density),21.608,1.844,0.3017,0.0798,478
+0.3,38,classical CS (TV),22.18,1.872,0.279,0.0615,478
+0.3,38,ADMM-Net (ours),40.506,1.934,0.9621,0.0133,478
+0.5,64,low-res zero-padded (central lines only),40.046,2.039,0.9745,0.008,478
+0.5,64,zero-filled (variable density),22.374,1.859,0.3899,0.0809,478
+0.5,64,classical CS (TV),22.956,1.886,0.3429,0.0446,478
+0.5,64,ADMM-Net (ours),46.234,1.976,0.9867,0.005,478

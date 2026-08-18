@@ -1,0 +1,15 @@
+# Authors: Michal Yechezkel (ID: 322556267), Almog Talker (ID: 322546680)
+# Headline comparison for the report: the classical baseline (L1-wavelet compressed
+# sensing) vs our model (unrolled ADMM-Net), across the three required sampling ratios
+# and 3 seeds (mean +/- std). The zero-filled reconstruction is logged automatically in
+# every run as the aliased-input reference / lower bound.
+base: configs/default.yaml
+
+fixed:
+  name: comparison
+  train.epochs: 40
+
+grid:
+  model.name: [classical_cs, admmnet_softthresh]
+  mask.sampling_ratio: [0.2, 0.3, 0.5]
+  train.seed: [0, 1, 2]

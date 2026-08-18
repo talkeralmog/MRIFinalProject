@@ -1,0 +1,21 @@
+# Authors: Michal Yechezkel (ID: 322556267), Almog Talker (ID: 322546680)
+# Calibration of the classical baseline, on the VALIDATION split only.
+# The classical CS reconstruction has two free parameters -- the wavelet soft-threshold
+# `lam` and the total-variation weight `tv_weight` -- and reporting an untuned baseline
+# would understate it. This sweep is evaluation-only (no trainable parameters), so all 9
+# points run in minutes. Select the winner on `split == val` in runs.csv, then update
+# TUNED_LAM / TUNED_TV_WEIGHT in src/baselines/classical_cs.py.
+# Run at the middle sampling ratio and reuse the operating point for all three ratios.
+base: configs/default.yaml
+
+fixed:
+  name: baseline_tuning
+  model.name: classical_cs_tv
+  model.wavelet_levels: 3
+  model.num_iters: 50
+  mask.sampling_ratio: 0.3
+
+grid:
+  model.lam: [0.003, 0.01, 0.03]
+  model.tv_weight: [0.005, 0.02, 0.05]
+  train.seed: [0]

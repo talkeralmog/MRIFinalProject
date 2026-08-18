@@ -1,0 +1,105 @@
+nohup: ignoring input
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/3411.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/A00038718.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/CorrSWU_25858.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/CorrUM_26183.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/NDARBV630BK6.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/sub84845.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:229: UserWarning: cross-reference dropped 247/5242 metadata rows with no matching .npy on disk (expected, per the professor's update).
+  warnings.warn(
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/3411.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/A00038718.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/CorrSWU_25858.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/CorrUM_26183.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/NDARBV630BK6.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/sub84845.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:229: UserWarning: cross-reference dropped 247/5242 metadata rows with no matching .npy on disk (expected, per the professor's update).
+  warnings.warn(
+sweep: configs/experiments/structure_ablation.yaml
+base: configs/default.yaml | runs: 4 | already complete: 29
+results csv: ./results/runs.csv
+
+[1/4] SKIP  structure_ablation_15501928aa  model.name=admmnet_softthresh, model.share_weights=False, train.seed=0
+[2/4] SKIP  structure_ablation_d1f5f6b907  model.name=admmnet_softthresh, model.share_weights=True, train.seed=0
+[3/4] RUN   structure_ablation_cf6fe5ff43  model.name=admmnet_pwl, model.share_weights=False, train.seed=0
+run_id=structure_ablation_cf6fe5ff43 | device=cuda | params=368,520 | trainable=True | sampling=29.7%
+resuming from epoch 78/100 (best_val=0.000999)
+epoch  78/100 | train 0.001014 | val 0.001041 | val PSNR 39.72
+epoch  79/100 | train 0.000996 | val 0.001098 | val PSNR 39.32
+epoch  80/100 | train 0.001014 | val 0.001189 | val PSNR 38.87
+epoch  81/100 | train 0.001012 | val 0.001064 | val PSNR 39.63
+epoch  82/100 | train 0.001028 | val 0.001037 | val PSNR 39.72
+epoch  83/100 | train 0.001001 | val 0.001038 | val PSNR 39.72
+epoch  84/100 | train 0.001024 | val 0.001006 | val PSNR 39.94
+epoch  85/100 | train 0.001004 | val 0.001845 | val PSNR 36.61
+epoch  86/100 | train 0.001328 | val 0.001032 | val PSNR 39.74
+epoch  87/100 | train 0.001035 | val 0.002972 | val PSNR 33.40
+epoch  88/100 | train 0.001016 | val 0.001014 | val PSNR 39.80
+early stopping at epoch 88 (no val-loss improvement for 15 epochs)
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/3411.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/A00038718.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/CorrSWU_25858.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/CorrUM_26183.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/NDARBV630BK6.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/sub84845.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:229: UserWarning: cross-reference dropped 247/5242 metadata rows with no matching .npy on disk (expected, per the professor's update).
+  warnings.warn(
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/3411.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/A00038718.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/CorrSWU_25858.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/CorrUM_26183.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/NDARBV630BK6.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/sub84845.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:229: UserWarning: cross-reference dropped 247/5242 metadata rows with no matching .npy on disk (expected, per the professor's update).
+  warnings.warn(
+DONE | test PSNR(real) 40.11 (zero-filled 21.61) | results -> ./results/structure_ablation_cf6fe5ff43
+[4/4] RUN   structure_ablation_2945d12e6e  model.name=admmnet_pwl, model.share_weights=True, train.seed=0
+run_id=structure_ablation_2945d12e6e | device=cuda | params=46,065 | trainable=True | sampling=29.7%
+epoch   1/100 | train 0.437398 | val 0.025146 | val PSNR 21.80 *
+epoch   2/100 | train 0.017990 | val 0.025636 | val PSNR 21.66
+epoch   3/100 | train 0.008737 | val 0.025527 | val PSNR 21.68
+epoch   4/100 | train 0.007500 | val 0.025699 | val PSNR 21.65
+epoch   5/100 | train 0.005296 | val 0.025094 | val PSNR 21.77 *
+epoch   6/100 | train 0.004552 | val 0.025584 | val PSNR 21.67
+epoch   7/100 | train 0.004242 | val 0.025669 | val PSNR 21.65
+epoch   8/100 | train 0.003713 | val 0.025682 | val PSNR 21.65
+epoch   9/100 | train 0.003161 | val 0.025701 | val PSNR 21.65
+epoch  10/100 | train 0.002883 | val 0.025701 | val PSNR 21.65
+epoch  11/100 | train 0.002546 | val 0.025652 | val PSNR 21.66
+epoch  12/100 | train 0.002497 | val 0.025599 | val PSNR 21.66
+epoch  13/100 | train 0.002704 | val 0.025701 | val PSNR 21.65
+epoch  14/100 | train 0.002194 | val 0.025701 | val PSNR 21.65
+epoch  15/100 | train 0.002050 | val 0.025698 | val PSNR 21.65
+epoch  16/100 | train 0.001952 | val 0.025701 | val PSNR 21.65
+epoch  17/100 | train 0.001890 | val 0.025701 | val PSNR 21.65
+epoch  18/100 | train 0.001819 | val 0.025701 | val PSNR 21.65
+epoch  19/100 | train 0.001719 | val 0.025701 | val PSNR 21.65
+epoch  20/100 | train 0.001672 | val 0.025701 | val PSNR 21.65
+early stopping at epoch 20 (no val-loss improvement for 15 epochs)
+DONE | test PSNR(real) 21.73 (zero-filled 21.61) | results -> ./results/structure_ablation_2945d12e6e
+
+sweep done | ran=2 skipped=2 failed=0

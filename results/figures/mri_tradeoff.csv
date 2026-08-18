@@ -1,0 +1,4 @@
+sampling ratio,phase-encode lines,acceleration R,scan time (fraction of full),predicted SNR loss (dB),zero-filled PSNR (dB),baseline PSNR (dB),our model PSNR (dB)
+0.2,26,4.92,0.203,-6.99,22.94,23.69,37.5
+0.3,38,3.37,0.297,-5.23,23.31,24.46,40.39
+0.5,64,2.0,0.5,-3.01,26.1,28.31,48.14

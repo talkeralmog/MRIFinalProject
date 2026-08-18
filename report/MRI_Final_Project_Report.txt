@@ -1,0 +1,528 @@
+Magnetic Resonance Imaging: 361.2.6501
+Final Project
+
+MRI Restoration from Subsampled k-space
+A classical compressed-sensing baseline against an unrolled ADMM-Net
+Michal Yechezkel (ID: 322556267)  ·  Almog Talker (ID: 322546680)
+Code and README: https://github.com/almogtalker/mri-kspace-reconstruction
+
+
+
+## Abstract
+
+This report addresses MRI restoration from subsampled k-space. Each repetition of a Cartesian pulse sequence fills one line of k-space, so scan time is proportional to the number of phase-encode lines: skipping lines shortens the scan in direct proportion, but takes sampling below Nyquist, and because MRI has no anti-aliasing filter in that direction the anatomy wraps around the field of view. Which lines are skipped matters as much as how many, because the centre of k-space carries most of the image energy; on our test set the central 20% of the lines hold 95% of it and the DC line alone holds 52%. We therefore undersample with a 1D variable-density Gaussian mask that samples the low frequencies densely, keeping 20%, 30% or 50% of the lines of a 128×128 central axial slice, and compare two reconstructions. The baseline is classical and training-free: a three-level Haar wavelet soft-threshold and a total-variation proximal step, alternated with a POCS projection that restores the measured lines exactly, its two weights calibrated on the validation split. Our model is an unrolled ADMM-Net, which unrolls the same optimization into eight stages and learns its proximal operator and data-consistency weight (317,320 parameters). Across 478 test slices and three mask realizations it wins on all 1434 slice–mask pairs, beating the baseline by +13.8, +15.9 and +19.8 dB PSNR at 20/30/50% and lifting SSIM from 0.40 to 0.92 at 20% and from 0.53 to 0.99 at 50%, with the advantage growing as more lines are acquired, since no prior can recover frequencies that were never measured. The baseline itself is beaten by 11 to 17 dB by simply acquiring the same number of contiguous central lines and zero-padding, which says that 1D Cartesian undersampling leaves the aliasing too coherent for a hand-designed sparsity prior. And what we set up as a seed sweep turned out to measure the sampling pattern, because our mask does not force the DC line to be acquired. Our model's own weakness is that its learned operator is tied to the pattern it trained on, losing 13.7 dB on unseen mask realizations where the training-free baseline loses nothing.
+
+
+
+## Introduction, Objective, and Data Description
+
+
+### 1.1  The challenge: scan time is set by the phase-encode loop
+
+A magnetic-resonance image is not measured pixel by pixel. Gradient coils make the Larmor frequency depend on position, ν(r) = γ(B0 + G·r), so what the receiver coil records during a readout is a trajectory through the Fourier transform of the effective spin density — k-space. A slice-select gradient together with a band-limited RF pulse picks the plane; the readout gradient sweeps kx continuously during one acquisition window; and a phase-encode gradient of a different amplitude before each readout moves to a different ky. That last point is the reason this project exists. In a standard 2D Cartesian sequence one repetition fills one line of k-space, so
+
+    Tscan = NPE × TR × NSA,
+
+and the only factor in it that image reconstruction can touch is NPE, the number of phase-encode steps. TR is constrained by the contrast we want to keep, a T1-weighted image needs a TR comparable to tissue T1, or the contrast mechanism itself changes, and cutting NSA throws away the averaging that suppresses noise. Skipping phase-encode lines buys time in exact proportion and leaves the contrast untouched. Scan time matters for patient comfort and scanner throughput, but above all because a long acquisition is a long window in which the patient can move: motion during the phase-encode loop corrupts many k-space lines at once, and because each line contributes to the whole image the result is ghosting spread along the phase-encode axis. Fetal, cardiac and functional imaging cannot wait minutes at all.
+
+Objective. Given the zero-filled, aliased image produced by an undersampled acquisition, recover an anatomically faithful estimate of the fully sampled slice; and quantify, at three acceleration factors, how much of the loss each of two reconstruction methods can undo.
+
+[BOX] Undersampling is not free: the trade-off from the image-formation lecture
+Acceleration is paid for in two currencies. (i) SNR. Noise in MRI is dominated by Johnson noise from thermal agitation in the coil and sample, whose variance grows with the receiver bandwidth, while the signal integrates over the acquired samples; SNR therefore scales as √Nsamples. Keeping a fraction r of the lines costs 10·log10r of intrinsic SNR; 7.0, 5.2 and 3.0 dB at our three ratios. (ii) Aliasing. An analogue anti-aliasing filter protects the readout direction in front of the ADC. The phase-encode direction has no such filter: there the field of view is set by FOVy = 1/Δky, so widening Δky past Nyquist shrinks FOVy until anatomy outside it wraps back in. Everything the two reconstruction methods do is an attempt to buy the first currency back and undo the second. Switching the gradients faster is the hardware route, and it is capped: gradient amplitude is limited to roughly 1–6 G/cm by the current a coil can carry before heating, and the slew rate by coil and amplifier design and then by the FDA limit on dB/dt exposure, which exists because rapidly switched fields induce peripheral nerve stimulation. Undersampling k-space is attractive because it buys time without asking anything more of the gradient system.
+
+Figure 1 puts numbers on both sides of that trade for our three sampling ratios: what the acceleration buys in scan time, what it costs in intrinsic SNR before any reconstruction is attempted, and what the two methods manage to recover.
+
+[FIGURE mri_tradeoff.png] Figure 1. The acquisition trade-off our experiment sits inside. (a) What acceleration buys: keeping 20/30/50% of the 128 phase-encode lines leaves 26/38/64 lines, i.e. nominal accelerations of R = 4.9× 3.4× and 2.0× because scan time is proportional to NPE. (b) What it costs before any reconstruction: the √N SNR penalty of acquiring fewer samples. (c) What reconstruction recovers: measured PSNR on the real channel over the test set. The zero-filled and classical-CS curves stay close together across the whole range while our model gains steadily: the pattern the rest of this report sets out to explain.
+
+
+### 1.2  Choosing which lines to skip
+
+Phase-encode lines are not interchangeable. Our lecture notes state the asymmetry directly: shallow phase-encode gradients fill the central lines of k-space and carry large signal amplitude, while steep gradients fill the outer lines, which carry small amplitude but the fine spatial detail. Rather than take that on trust we measured it on our own test set. A single line, DC itself, (ky = 0) holds 52% of the total k-space energy; the central 20% of the lines (27 rows) hold 95.4% of it, and the central 50% (65 rows) hold 99.0%. A mask that spent its budget uniformly would waste most of it on lines contributing almost nothing to the image energy. Following standard practice in compressed-sensing MRI, we therefore draw line indices from a normal distribution centred on the middle of k-space (σ = 0.25·Nrows), without replacement, seeded for reproducibility, so low frequencies are sampled densely and high frequencies sparsely. Figure 2 shows the measurement and the mask side by side, and Listing 1 is the code that draws it.
+
+[FIGURE mri_kspace_energy.png] Figure 2. Why a variable-density phase-encode mask — measured on our own data. (a) Energy per phase-encode line summed over all 478 test slices, on a log scale: it falls by more than three orders of magnitude from the centre to the edge of k-space, and the DC line alone accounts for 52% of the total. (b) Cumulative energy inside a central band, against the band width, with our three sampling ratios marked. (c) The same energy profile against the probability that our mask acquires each line, averaged over 200 draws (right axis): the sampling density follows the energy density, which is the design intent.
+
+[FIGURE code_mask.png] Listing 1. The undersampling mask (src/masks.py, docstring omitted). Whole rows are kept, matching a Cartesian phase-encode acquisition where a full readout line is the unit that is actually skipped; indices come from a normal distribution centred on the middle of k-space and are drawn without replacement by rejection on a set, so the requested fraction is met exactly and the pattern is reproducible from its seed. Note <tt>center_lines</tt>, which can force a central band to be acquired: we left it at 0, and section 4.6 is about what that cost us.
+
+
+### 1.3  The shape of the undersampling artifact
+
+Zero-filling the unsampled lines multiplies k-space by the mask, which convolves the image with the mask's point spread function along the phase-encode direction. The shape of that PSF, not merely how many lines were dropped, decides what artifact appears and whether a sparsity prior can remove it. Figure 3 compares three ways of spending the same line budget. Truncating k-space to its centre is a pure low-pass filter: the image stays clean but blurs, its resolution limited by the full width at half maximum of the resulting sinc, with Gibbs ringing at sharp boundaries. Skipping every R-th line gives a PSF with a few tall, well-separated sidelobes, and therefore a few discrete copies of the head superimposed on the true one: textbook wraparound. Our random variable-density draw spreads the same sidelobe energy over many small lobes, so the artifact becomes noise-like rather than structured. That is exactly the condition compressed sensing needs: an incoherent artifact looks like noise in the sparsifying transform and can be thresholded away, whereas a coherent replica looks like signal and cannot.
+
+That argument has a limit here, and the limit explains our baseline's behaviour. A 1D Cartesian mask can randomize only one of the two image axes: along the readout direction every acquired line is complete, so the aliasing is smeared purely along y and stays far more coherent than the 2D random sampling for which compressed-sensing guarantees are usually stated. Visible horizontal banding survives in the right-hand column of Figure 3. A wavelet/TV prior has much less to work with in this regime than the compressed-sensing literature might lead one to expect; a point we return to in section 4.7.
+
+Comparing our mask against uniform random sampling makes a second point that the compressed-sensing framing alone would miss. Uniform sampling is the more incoherent of the two, its point spread function is flatter still, and if incoherence were the only criterion it would be the better choice. It is not, because it ignores where the energy is: averaged over 200 draws at 30% sampling, a uniform mask captures 50% of the test set's k-space energy against 73% for our variable-density draw, and its zero-filled RMSE is correspondingly worse (0.134 against 0.091). A good phase-encode mask has to satisfy two conditions at once — scatter the aliasing incoherently, and keep the low-frequency energy that sets the image's overall signal level. Variable-density sampling is the compromise, and section 4.6 shows we did not push it far enough.
+
+[FIGURE mri_psf_aliasing.png] Figure 3. The same line budget, four different artifacts. Rows, top to bottom: the sampling pattern along ky; the resulting point spread function on a log scale, annotated with its peak sidelobe as a percentage of the main lobe; the zero-filled magnitude image; and the absolute error. Low-pass truncation blurs but does not alias. Regular skipping produces discrete ghosts; three superimposed copies of the head, displaced along the phase-encode axis. Uniform random sampling and our variable-density draw both give incoherent, noise-like artifacts, and have much the lowest peak sidelobes (37% and 31%, against 86% and 83%). The RMSE values in the bottom row are for this one realization and should not be read as a ranking: the variable-density draw shown here happens to miss the DC line, which costs it the overall signal level. Averaged over 200 draws the ordering is the expected one, and section 4.6 makes that comparison properly.
+
+
+### 1.4  The dataset and its contrast weighting
+
+We use the course “Reconstruction” dataset: 3D brain scans stored as NumPy volumes, with per-scan age and sex metadata in three CSV files. Subject identifiers point to an aggregation of open-access structural cohorts, which is consistent with what the images show. We keep exactly one slice per subject, the anatomical middle slice along the through-plane axis, walking outward only if the middle slice fails a minimum-signal check, so the number of samples per split equals the number of subjects. Each slice is centre-cropped to 128×128 and divided by the maximum magnitude of its own volume, so every channel lies in [−1, 1]. We apply the identical rule to every method, split and sampling ratio; slices are extracted once into a cache, so all runs consume byte-identical data.
+
+Identifying the contrast weighting is not a formality: it is what fixes the sparsity structure both methods rely on. In these images white matter is the brightest tissue, cortical and deep grey matter form a middle band, and the ventricles and sulcal CSF are dark. Cerebrospinal fluid has the highest proton density of the three (relative PD 1.00, against 0.69 for grey matter and 0.61 for white matter at 1.5 T), so a proton-density-weighted image would show it bright. It is dark here because CSF also has by far the longest T1 (2650 ms, against 760 and 510 ms): with a short TR it never recovers its longitudinal magnetization between excitations and so contributes almost no signal. That ordering identifies the data as T1-weighted structural MRI — short TR, short TE. For us the practical consequence is that these images consist of large, smoothly varying tissue compartments separated by sharp boundaries, which is the structure a total-variation prior assumes and a learned prior can exploit. Figure 4 sets out the evidence: the slice itself, the intensity histogram in which the three tissue classes separate, and the relaxation-time table that explains why the ordering comes out that way.
+
+[BOX] Reading the sequence back out of the picture
+Contrast in MRI is not a property of tissue alone. The course separates intrinsic parameters, which the patient brings, proton density, T1 (spin-lattice recovery) and T2 (spin-spin decay), from extrinsic ones the operator chooses: TR, TE and the flip angle. Whichever intrinsic difference the extrinsic settings expose becomes the weighting. A long TR lets every tissue recover fully, so T1 differences vanish and proton density dominates; a long TE lets transverse magnetization decay, exposing T2. Our images show the third case: short TR and short TE, so tissues are separated by how fast they recover longitudinally and CSF, with T1 = 2650 ms, has barely begun. That bears directly on reconstruction. Every prior in this report, the wavelet sparsity of the baseline, the TV assumption of piecewise-smooth tissue with sharp boundaries, and the operator our network learns, is a statement about what brain images look like, and a T1-weighted brain looks the way it does because of that choice of TR and TE. A T2-weighted or FLAIR acquisition would invert the CSF contrast and change the statistics these priors depend on, so we would not expect the trained network to transfer to one without retraining. This is a limitation of the learned prior that the training-free baseline does not share, and it belongs beside the mask-specificity result of Appendix B.1.
+
+[FIGURE mri_contrast.png] Figure 4. What kind of MRI this is. (a) A central axial slice, with the three tissue levels measured from it. (b) The intensity histogram pooled over 40 slices: a large near-zero background outside the head, then a broad soft-tissue bulk with the CSF, grey-matter and white-matter levels marked. (c) The course's relaxation-time table at 1.5 T and the inference it supports — CSF is the most proton-dense of the three tissues yet the darkest here, an ordering only a T1-weighted acquisition produces.
+
+
+#### Exploratory data analysis
+
+Figure 5 shows what the pipeline actually feeds the two methods. The age distribution is strongly skewed: a large young-adult mode near 20 years with a long tail out to 84 years, and the three splits track each other closely, which is the point of stratifying. The intensity histogram is dominated by background; the head occupies well under half the field of view, so a large fraction of voxels sit near zero. That shapes how we read the results. Any metric averaged over the whole frame is partly a measure of how well a method keeps the background empty, which is much easier than reconstructing tissue; this is one reason we look at tissue contrast separately in section 4.5. And aliasing wraps bright scalp and skull signal into that empty background, where it is unusually conspicuous: the bright arcs in the bottom-right panel.
+
+[FIGURE eda_panel.png] Figure 5. Dataset and forward model: what the network sees. Top: four central axial test slices after cropping and normalization. Middle left: the age distribution of the three splits, which coincide by construction. Middle right: the pooled intensity histogram on a log count axis, showing the large low-signal background and the soft-tissue bulk. Bottom: fully sampled k-space; the same k-space after keeping 30% of the phase-encode lines, where the horizontal stripes are the skipped lines; the fully sampled image; and its zero-filled reconstruction, in which the aliasing appears as replicated arcs smeared along the vertical, phase-encode axis; exactly what the missing anti-aliasing filter in that direction predicts.
+
+
+#### Splits, and a correction to the provided ones
+
+The train/validation/test division supplied with the dataset could not be used as given: the provided test CSV lists patients that are not present in the NumPy directory on the server, so the split it defines cannot be materialised. We therefore concatenate the three provided CSVs into one master table, cross-reference it against the volumes actually on disk, and build our own age-stratified three-way split, binning age into quantiles and dividing each bin by the same 80/10/10 fractions so that the three splits share one age distribution and none is biased towards a particular age group.
+
+Our run logs record what the cross-reference discards, and the accounting is worth following because its last step is easy to miss. Of the 5,242 metadata rows across the three CSVs, 247 have no matching volume on disk and six of the files that do exist are zero bytes, which leaves 4,995 usable subjects. A further 204 then fail to survive the quantile binning, because stratifying on age silently requires an age and those rows carry none. What remains is the 4,791 subjects Table 1 accounts for. The split is drawn from its own seed, independent of the training seed, so every run and every seed sees the same partition, which is what lets the sample-wise scatter plots pair the two methods on identical slices. Of the 479 test subjects, 478 volumes load and yield a usable central slice, and 478 is the number of measurements behind every test statistic below.
+
+Split | # subjects | Age mean | Age std | Age range
+train | 3833 | 26.3 | 15.9 | 5–84
+val | 479 | 26.3 | 16.7 | 5–85
+test | 479 | 26.0 | 15.5 | 5–82
+Table 1. Our age-stratified split. The means agree to within 0.3 years and the ranges are effectively identical, so age is not confounded with the split. Ages are in years.
+
+Figure 5b describes the subjects themselves rather than their images. The cohort panel explains a failure mode we return to in section 4.4: the data is pooled from many studies, so scanner and protocol differences are a real source of slice-to-slice variability.
+
+Figure 5b describes the subjects rather than their images. The cohort panel explains a failure mode we return to in section 4.4: the data is pooled from many open-access studies, so scanner and protocol differences are a real source of slice-to-slice variability, and the low-contrast slices our model handles worst are plausibly the ones from the cohorts least represented in training.
+
+[FIGURE mri_demographics.png] Figure 5b. Who is in the dataset. (a) Age distribution of the three splits and (b) the same as a cumulative curve, where any shift between splits would open a visible gap. (c) Sex balance and (d) age by sex. (e) The source cohorts, inferred from the subject filenames: the data is an aggregation of open-access studies (NKI-Rockland, several CoRR sites, SLIM, NDAR and others), and because we stratify on age rather than on site, every cohort is spread across all three splits. That matters for our results: the scanners, field strengths and acquisition parameters differ between cohorts, which is the most likely source of the low-contrast outliers our model handles worst (Figure 11, row 2).
+
+
+### 1.5  Use of the three splits
+
+Three splits, three different jobs. We are explicit about this because the classical baseline has free parameters too, and calibrating it on the wrong split would have quietly invalidated the comparison.
+
+- Train (3833 subjects, 80%) — used only to fit the ADMM-Net weights. The classical baseline never sees it: it has no trainable parameters at all.
+- Validation (479 subjects, 10%): used for every decision that had to be made before looking at the test set. For our model: early stopping, and which epoch's checkpoint to keep. For the baseline: the calibration grid over <tt>lam</tt> and <tt>tv_weight</tt> in Table 2. Both methods therefore get a fair chance to be tuned, on the same data, and neither is tuned on what it is scored on.
+- Test (479 subjects, 10%; 478 with a usable central slice); touched once, to produce every number in section 4. No model selection, no threshold, no stopping decision was made from it.
+
+The split is at the subject level, not the slice level, so no subject contributes slices to more than one split. With one central slice per subject that distinction is moot here, but it is the reason the code splits subjects first and extracts slices second: switching <tt>central_slice_only</tt> off would otherwise leak neighbouring slices of the same brain across the train/test boundary and inflate the results. Because the split is drawn from its own fixed seed, independent of the training seed, all nine runs in the comparison use the identical partition: which is what makes the paired scatter plots of section 4.3 and the 1434/1434 win counts meaningful, since both methods are scored on exactly the same slices under exactly the same masks.
+
+
+### 1.6  Evaluation metrics
+
+For every test slice and sampling ratio we compute PSNR and SSIM against the fully sampled image, on the real and imaginary components separately, and report the mean and standard deviation across the test set, pooling the three mask realizations (3 × 478 = 1434 measurements per cell). PSNR uses peak = 2.0, the width of the [−1, 1] interval each channel is guaranteed to occupy. A central slice has a measured RMS magnitude of about 0.21, so this peak is roughly ten times the typical signal and every absolute dB here sits higher than one computed from a per-image peak. Applied identically to every method, split and ratio, so no comparison is affected, and subtracting the constant 20·log102 = 6.02 dB restates any value with peak = 1.0; Table 4 gives both.
+
+While preparing this report we checked the ground truth channel by channel and found something that has to be stated plainly: the imaginary channel of the reference images is identically zero. The course volumes are reconstructed magnitude images, not complex data; all 4,790 cached slices have max|Im| = 0 exactly, and the real channel is non-negative. Our pipeline is complex-valued (it carries a two-channel real/imaginary tensor end to end, and the forward model and data-consistency steps use a true complex FFT), so it would carry phase if the data had any; the dataset simply does not. This does not invalidate the required metric, but it changes what the imaginary channel measures — and the reason is a symmetry straight out of the course.
+
+[BOX] Hermitian symmetry: where a “phase” comes from when there is none
+A real-valued image has conjugate-symmetric k-space, F(−k) = F*(k); the property partial-Fourier (half-Fourier) acquisition exploits to acquire only somewhat more than half of k-space and synthesize the rest. We verified it holds on our slices to a relative error of 1.3×10−8. Our random variable-density mask, however, keeps only 46%, 42% and 56% of the acquired lines together with their conjugate partner at 20/30/50% sampling. So the masked k-space is not Hermitian, and its inverse FFT is no longer real: the zero-filled reconstruction acquires a spurious imaginary component carrying 46% and 42% of the image energy at 20% and 30% sampling. Forcing the mask to be conjugate-symmetric removes it entirely (the imaginary part drops to ~10−16, i.e. 171.0 dB). So “PSNR on the imaginary channel” here measures how well a method suppresses the artefactual phase its own sampling injected. That is a meaningful quantity, effectively a measure of how well the method restores conjugate symmetry, but it is not phase fidelity, and its absolute dB is inflated, because a fixed peak of 2.0 is divided by an MSE taken against zero. Any method free to output zero on that channel scores nearly perfectly, while one that re-imposes the measured, non-Hermitian k-space at every stage cannot. We therefore lead with the real channel throughout and report the imaginary channel beside it, flagging the two places where they disagree (sections 4.1 and B.2). Figure 6 demonstrates the whole argument on a single slice.
+
+[FIGURE mri_hermitian.png] Figure 6. A real image has conjugate-symmetric k-space; a random mask breaks that symmetry. (a) At 30% sampling only 42% of the acquired lines have their conjugate partner acquired as well. (b) The reference imaginary part is exactly zero, which is why the panel is blank; the measured maximum is printed under each map. (c) The imaginary part the undersampling creates, which is not zero and is visibly structured along the phase-encode axis. (d) Symmetrizing the mask collapses it back to numerical zero. (e) The spurious energy share tracks how many conjugate pairs the mask happens to keep, and falls sharply by 50% sampling. Blue and red are negative and positive imaginary values on a shared scale.
+
+
+
+## Baseline Model
+
+Classical compressed sensing: multi-level wavelet L1 plus total variation, with POCS data consistency (src/baselines/classical_cs.py, registered as <tt>classical_cs_tv</tt>). This is a training-free reconstruction, and every element of it is chosen from the physics of the acquisition or the anatomy of the subject rather than fitted to data. Each of the 50 iterations applies three steps in turn:
+
+- Sparsity prior. Soft-threshold the detail coefficients of a three-level Haar wavelet decomposition. Soft-thresholding is the proximal operator of the L1 norm, and brain images are approximately sparse in a wavelet basis: large uniform tissue compartments compress into a few coarse-scale coefficients, leaving boundaries and texture in the details.
+- Total-variation prior. A Chambolle proximal step on the isotropic TV penalty. TV is the standard prior for compressed-sensing MRI and it is anatomically motivated here: a T1-weighted brain is piecewise smooth with sharp transitions between grey matter, white matter and CSF, so the image gradient is sparse, whereas the undersampling artifact is spread across the whole field of view. The prior therefore separates the two.
+- Data consistency (POCS). Replace the k-space values on the acquired lines with the measured ones and keep the current estimate everywhere else. This is the step that ties the estimate to the physics: whatever the priors do, the reconstruction is never allowed to disagree with what the scanner actually measured.
+
+Both priors act independently on the real and imaginary channels. The module has no trainable parameters — only the iteration count and the two regularization weights, so the training loop treats it as evaluation-only.
+
+[FIGURE code_baseline.png] Listing 2. The baseline's iteration (src/baselines/classical_cs.py). Nine lines: start from the zero-filled image, then alternate wavelet shrinkage, the TV proximal step and the POCS projection. The <tt>@torch.no_grad()</tt> decorator makes the training-free character explicit.
+
+Listing 2 gives the nine lines that do the work, and Figure 7 places them beside our model as block diagrams. The two pipelines share a deliberate amount of structure: both alternate a sparsity prior with a data-consistency step, which is what makes the comparison a controlled one rather than a contest between unrelated methods.
+
+[FIGURE pipelines.png] Figure 7. Block diagrams of the two pipelines. Top: the classical baseline; the forward model (FFT, mask, zero-filled inverse FFT) followed by a fixed loop of wavelet shrinkage, TV proximal step and POCS data consistency. Bottom: our model, which keeps the same alternation of prior and data consistency but unrolls it into a fixed number of stages with independent learned weights. The structural similarity between the two is deliberate: it is what makes the comparison a controlled one, isolating the effect of learning the prior rather than of changing the reconstruction strategy.
+
+
+### 2.1  Calibration on the validation split
+
+Reporting an untuned baseline would understate it, so the wavelet threshold <tt>lam</tt> and the TV weight <tt>tv_weight</tt> are selected by a grid search on the validation split only; the test set plays no part in the choice. Calibration selects <tt>lam</tt> = 0.03, <tt>tv_weight</tt> = 0.02. Table 2 shows the grid.
+
+<tt>lam</tt> | <tt>tv_weight</tt> | Val PSNR, real (dB) | Val PSNR, imag (dB) | Mean of the two
+0.03 | 0.02 | 22.228 | 32.455 | 27.341
+0.01 | 0.02 | 22.235 | 32.375 | 27.305
+0.003 | 0.02 | 22.198 | 32.169 | 27.184
+0.03 | 0.05 | 22.128 | 32.027 | 27.078
+0.01 | 0.05 | 22.113 | 31.908 | 27.010
+0.003 | 0.05 | 22.089 | 31.788 | 26.938
+0.01 | 0.005 | 22.088 | 31.770 | 26.929
+0.1 | 0.02 | 22.041 | 31.798 | 26.919
+0.03 | 0.005 | 22.031 | 31.649 | 26.840
+0.003 | 0.005 | 22.054 | 31.586 | 26.820
+0.3 | 0.02 | 21.773 | 30.801 | 26.287
+Table 2. Baseline calibration, on the validation split. Eleven (<tt>lam</tt>, <tt>tv_weight</tt>) combinations at 30% sampling, ranked by the mean of the two channels; the selected point is highlighted. Note the spread: across the whole grid the validation PSNR on the real channel moves by only 0.46 dB. The baseline is not underperforming because it is badly tuned: no setting of these two weights changes its behaviour materially.
+
+
+### 2.2  A stronger prior, and a weak one kept for comparison
+
+Our first baseline used a single-level Haar transform, which is the form usually written down in textbooks. It does not reconstruct, and the reason is instructive: a one-level decomposition exposes only the finest-scale detail coefficients, so shrinking them amounts to a mild local smoothing, and the subsequent POCS projection largely undoes it; the iteration converges effectively back onto its own input. On a Shepp-Logan phantom at 30% sampling it gains +0.13 dB over zero-filling, and no value of <tt>lam</tt> across four orders of magnitude does better. On the real test set it is statistically indistinguishable from zero-filling at every ratio (Table 3). Moving to a three-level transform plus a TV term turns the same iteration into a working reconstruction. We kept the single-level variant in the code as <tt>classical_cs</tt> and report it throughout as a prior ablation, because the comparison makes a point we did not anticipate and that Table 2 confirms independently: which prior you choose matters far more than how you tune it. A baseline can look entirely reasonable on paper and be doing almost nothing.
+
+
+
+## Proposed Model: Unrolled ADMM-Net
+
+Unrolled ADMM-Net (<tt>admmnet_softthresh</tt>, src/model.py), in the spirit of Yang et al.'s Deep ADMM-Net for compressive-sensing MRI. We take the same regularized inverse problem the baseline solves, unroll its ADMM solver into a fixed number of stages, and learn the components that the baseline fixes by hand. Each stage performs a feature-domain regularization step — an analysis convolution, a learnable channel-wise soft-threshold (a learned proximal operator, replacing the fixed wavelet shrinkage), a dual update and a synthesis convolution, followed by a data-consistency X-update with a learnable, strictly positive penalty ρ.
+
+What we care about in the design is what is not learned. We know the forward operator exactly: we generated the measurements ourselves with an FFT and a mask, and in a real scanner the sampling pattern is likewise known from the pulse sequence. A generic image-to-image network throws that knowledge away and has to rediscover it from data. Our model instead keeps the data-consistency step analytic, so the acquired k-space lines are re-imposed at every one of the eight stages and the network can never contradict the measurement: it is only ever asked to fill in what was not acquired. Appendix B.2 tests whether that structure is actually worth anything by comparing against a larger U-Net with no data-consistency step.
+
+[FIGURE code_stage.png] Listing 3. The learned data-consistency step (src/model.py). On the acquired lines the estimate is blended with the measurement as (y + ρ·Fx)/(1 + ρ); everywhere else the estimate passes through untouched. A softplus keeps ρ positive, and each stage learns its own value, so the balance between trusting the measurement and trusting the prior is set per stage instead of by hand. Taking ρ → 0 recovers the baseline's hard POCS projection exactly, which is the sense in which our model generalizes it.
+
+[FIGURE code_forward.png] Listing 4. One unrolled ADMM stage (src/model.py). The body maps one-to-one onto the ADMM updates: C is the analysis (feature extraction), Z the proximal step on the transformed variable, M the dual ascent, and X the data-consistency update of Listing 3. Keeping this correspondence explicit is what lets us inspect the network stage by stage; each stage's output is a valid image estimate, which is why Figure 8 can show them.
+
+Listing 4 is the whole stage: four assignments, one per ADMM update, followed by the data-consistency call of Listing 3. Eight of these run in sequence, each with its own weights.
+
+
+### 3.1  Implementation details
+
+Item | Setting
+Input / output | complex image as a 2-channel (real, imaginary) tensor, 128×128
+Unrolling depth | 8 ADMM stages, independent weights per stage
+Feature channels | 64
+Trainable parameters | 317,320
+Loss | MSE + 0.1·L1 (<tt>mse_l1</tt>); the loss ablation is in Appendix A.2
+Optimizer | Adam, learning rate 5·10−4
+Epochs | up to 40, early stopping on validation loss; the reported weights are the best-validation checkpoint
+Data splits | 3833 / 479 / 479 subjects, age-stratified and fixed across all runs (Table 1)
+Seeds | 3 per configuration, varying the mask realization and the network initialization
+One model per ratio | a separate network is trained at 20%, 30% and 50%
+Table 3. Our model's configuration. The loss is deliberately plain: a pixel-wise term with a small L1 component, chosen by the ablation in Appendix A.2 rather than assumed. The parameter count is the one <tt>torch</tt> reports for this configuration; the rest are the values in <tt>configs/default.yaml</tt> and <tt>configs/experiments/comparison.yaml</tt>, which each run also records in its <tt>manifest.json</tt>.
+
+Unrolling has one consequence that makes this an MRI reconstruction rather than a generic denoiser: the intermediate state after each stage is itself a complete image estimate that satisfies the measurements on the acquired lines. Figure 8 uses that to show the reconstruction actually forming: the aliasing is removed progressively, and the error map shrinks stage by stage, rather than everything happening inside one opaque forward pass. Appendix A.1 confirms the stages are doing real work: PSNR climbs monotonically from 41.7 to 49.5 dB as the unrolling goes from 1 to 8 stages.
+
+[FIGURE per_stage_reconstruction.png] Figure 8. The reconstruction forming across the unrolled stages. Top row: the magnitude estimate after each ADMM stage, with its PSNR; bottom row: the absolute error against the ground truth on a shared scale. The leftmost column is the zero-filled input the network receives and the rightmost is the reference. Most of the aliasing is removed in the first few stages and the later ones refine tissue boundaries — consistent with the depth sweep, where the first three stages account for most of the gain.
+
+
+
+## Results
+
+
+### 4.1  Quantitative comparison over the test set
+
+Table 4 gives one row per sampling ratio for each method, mean ± one standard deviation across the test set, on the real and imaginary channels separately. Two of the four rows per ratio are references rather than competitors; the zero-filled input, which is the floor any method must beat, and the single-level wavelet variant, which shows what a weak prior looks like. Each cell aggregates 3 × 478 = 1434 per-slice measurements.
+
+Ratio | Method | PSNR real (dB) | PSNR imag (dB) | SSIM real | SSIM imag
+20% | Zero-filled input (no reconstruction) | 22.94 ± 3.50 | 33.88 ± 5.07 | 0.3868 ± 0.1345 | 0.4973 ± 0.2325
+20% | Naive CS (single-level wavelet): prior ablation | 22.92 ± 3.49 | 33.57 ± 4.71 | 0.3846 ± 0.1338 | 0.4900 ± 0.2240
+20% | Baseline: classical CS (wavelet + TV) | 23.69 ± 4.10 | 35.90 ± 5.35 | 0.3963 ± 0.1371 | 0.5247 ± 0.2616
+20% | Our model: unrolled ADMM-Net | 37.50 ± 3.53 | 54.17 ± 5.58 | 0.9243 ± 0.0591 | 0.9799 ± 0.0172
+30% | Zero-filled input (no reconstruction) | 23.31 ± 3.84 | 33.62 ± 4.94 | 0.4029 ± 0.1612 | 0.5022 ± 0.2347
+30% | Naive CS (single-level wavelet): prior ablation | 23.29 ± 3.83 | 33.30 ± 4.56 | 0.4012 ± 0.1599 | 0.4944 ± 0.2255
+30% | Baseline: classical CS (wavelet + TV) | 24.46 ± 4.86 | 36.48 ± 5.53 | 0.4277 ± 0.1699 | 0.5559 ± 0.2633
+30% | Our model: unrolled ADMM-Net | 40.39 ± 4.88 | 55.78 ± 9.39 | 0.9490 ± 0.0434 | 0.9751 ± 0.0237
+50% | Zero-filled input (no reconstruction) | 26.10 ± 5.50 | 38.53 ± 2.64 | 0.5240 ± 0.1967 | 0.7178 ± 0.1321
+50% | Naive CS (single-level wavelet): prior ablation | 26.06 ± 5.40 | 38.59 ± 2.39 | 0.5221 ± 0.1938 | 0.7219 ± 0.1280
+50% | Baseline: classical CS (wavelet + TV) | 28.31 ± 7.68 | 45.17 ± 1.50 | 0.5306 ± 0.2769 | 0.9251 ± 0.0384
+50% | Our model: unrolled ADMM-Net | 48.14 ± 2.55 | 60.68 ± 10.58 | 0.9918 ± 0.0053 | 0.9854 ± 0.0165
+Table 4. Test-set results by sampling ratio (mean ± 1 std across the 478-slice test set, pooling three mask realizations; n = 1434 per cell). Our model is highlighted. Read the real-channel columns first: the imaginary-channel columns are measured against an identically zero reference, so their absolute values are inflated and they should be read as a measure of spurious-phase suppression (section 1.6). PSNR uses peak = 2.0; subtract 6.02 dB throughout for the peak = 1.0 convention, giving our model 31.5, 34.4, 42.1 dB at 20/30/50%.
+
+Our model wins at every ratio by a wide margin on the real channel: +13.8, +15.9 and +19.8 dB over the calibrated baseline, with SSIM rising from 0.40 to 0.92 at 20% sampling and from 0.53 to 0.99 at 50%. The classical baseline improves on zero-filling only slightly, +0.7, +1.2 and +2.2 dB, and section 4.7 argues this is a property of 1D Cartesian undersampling rather than a defect of the implementation. Our single-level variant does nothing at all: −0.0, −0.0 and −0.0 dB, i.e. within noise of its own input at every ratio, which is the prior ablation promised in section 2.2.
+
+Standard deviations are large for every method — up to 7.7 dB for the baseline at 50% sampling. That is not measurement noise. Two separate sources are pooled into it: slice-to-slice difficulty (subjects differ in head size, scanner and how much of the frame the brain fills), and the mask realization, which section 4.6 shows dominates. Our model has the smallest spread at 50% (2.55 dB against 7.68 dB for the baseline), i.e. it is not only better on average but more consistent.
+
+
+### 4.1b  The same comparison scored on the magnitude image
+
+Reporting the real and imaginary channels separately is the right convention for genuinely complex data, where the two parts are separate physical quantities. This dataset is not that case, and section 1.6 explained why: the reference imaginary channel is identically zero, so the real channel and the magnitude of the reference are the same image. The quantity a radiologist actually looks at is |x|, and it is also the only summary that charges a method for the spurious imaginary component the non-Hermitian mask injects. Scoring Re(x) alone ignores that component; scoring Im(x) against a zero reference over-rewards any method free to output zero there. We therefore recomputed the whole comparison on |x| = √(Re&sup2; + Im&sup2;), over the same 1434 slice-mask pairs. Table 4b gives the result next to the per-channel numbers, and Figure 9c plots it.
+
+Ratio | Method | PSNR |x| (dB) | SSIM |x| | PSNR Re(x) (dB) | Δ PSNR
+20% | Zero-filled input (no reconstruction) | 23.41 ± 3.05 | 0.3907 ± 0.1096 | 22.94 | +0.47
+20% | Baseline: classical CS (wavelet + TV) | 24.07 ± 3.59 | 0.3955 ± 0.0953 | 23.69 | +0.38
+20% | Our model: unrolled ADMM-Net | 37.45 ± 3.55 | 0.8973 ± 0.0769 | 37.50 | −0.05
+30% | Zero-filled input (no reconstruction) | 23.76 ± 3.23 | 0.4140 ± 0.1238 | 23.31 | +0.45
+30% | Baseline: classical CS (wavelet + TV) | 24.79 ± 4.19 | 0.4347 ± 0.1164 | 24.46 | +0.33
+30% | Our model: unrolled ADMM-Net | 40.31 ± 4.91 | 0.9196 ± 0.0638 | 40.39 | −0.07
+50% | Zero-filled input (no reconstruction) | 26.27 ± 5.21 | 0.5345 ± 0.1441 | 26.10 | +0.17
+50% | Baseline: classical CS (wavelet + TV) | 28.41 ± 7.44 | 0.5531 ± 0.2206 | 28.31 | +0.10
+50% | Our model: unrolled ADMM-Net | 47.90 ± 2.64 | 0.9818 ± 0.0130 | 48.14 | −0.24
+Table 4b. The comparison scored on the magnitude image, with the real-channel PSNR from Table 4 alongside for reference (n = 1434 per cell). The final column is the difference. Every ordering and every conclusion in this report is unchanged; the magnitude numbers are simply the ones to quote when comparing against published reconstruction work.
+
+Every conclusion survives the change of convention, which is the main thing worth knowing: our model still beats the baseline by +13.4 to +19.5 dB, and the ordering of all four methods is identical at every ratio. Differences in the last column are informative in their own right. The zero-filled input gains +0.47 to +0.17 dB when scored on the magnitude, because taking the modulus of a complex number whose true value is real and positive partly rectifies the aliasing error. Our model changes by −0.05 to −0.24 dB, i.e. effectively nothing, because its output is already almost real. That near-zero difference is the cleanest single check that the network is not hiding error in a channel the per-channel table would not have charged it for.
+
+[FIGURE mri_magnitude.png] Figure 9c. The comparison scored on the magnitude image. (a) PSNR and (b) SSIM on |x| against the sampling ratio, for all four methods. (c) The difference between the magnitude score and the real-channel score. A negative bar means the magnitude metric charges the method for its spurious imaginary component; a positive bar means taking the modulus happened to rectify some of its error.
+
+
+### 4.2  Trends against the sampling ratio
+
+Our model sits above the baseline at every ratio, and the gap widens as more lines are acquired: +13.8 dB at 20% growing to +19.8 dB at 50%. That is the opposite of the natural intuition, that a learned prior should matter most when data is scarcest, and the MRI explanation is that two effects pull in opposite directions. At 20% sampling the outer k-space is almost unmeasured, so the high-frequency content that separates a good reconstruction from a merely smooth one is absent from the measurement; no prior, learned or analytic, can invent it, and both methods are capped by the physics. As more lines arrive, the learned prior gains something the fixed prior cannot use: it has learned how brain images behave at those frequencies and can combine that with the new measurements, whereas wavelet and TV apply the same generic smoothness assumption regardless of what was acquired. SSIM shows the same ordering and saturates near 0.99 at 50%, where our reconstructions are visually hard to distinguish from the fully sampled reference (Figure 12). Figures 9a and 9b give the two required line plots, PSNR and SSIM, with the real and imaginary channels drawn separately.
+
+[FIGURE psnr_vs_ratio_per_channel.png] Figure 9a. PSNR against sampling ratio, real and imaginary channels separately, with the shaded band showing ±1 standard deviation across the test set. All four methods are shown so the floor (zero-filled) and the weak-prior ablation are visible alongside the two compared methods. On the real channel the ordering is unambiguous and the gap grows with the ratio; on the imaginary channel the absolute values are inflated by the zero reference, as the annotation notes.
+
+[FIGURE ssim_vs_ratio_per_channel.png] Figure 9b. SSIM against sampling ratio, same layout. SSIM is the more telling of the two metrics here because it is sensitive to structure rather than intensity: the baseline stays near 0.40–0.53 on the real channel across the whole range, i.e. the tissue structure is still largely wrong, while our model reaches 0.92–0.99.
+
+
+### 4.3  Sample-wise comparison and correlation
+
+Both scatter plots pair the two methods on identical slices, which the fixed split makes possible. On the real channel every single point lies above the y = x line: our model wins on 1434/1434, 1434/1434 and 1434/1434 slice–mask pairs at 20/30/50% sampling, for PSNR and for SSIM alike. On the imaginary channel the win rate is near-total but not perfect: 1383/1434 for PSNR and 1420/1434 for SSIM at 30% sampling, and 1432/1434 for SSIM at 50%. Those losses are the structural cost described in section 1.6; on a channel whose reference is zero, re-imposing the measured non-Hermitian k-space at every stage puts a floor under our error that a method with no data-consistency constraint does not have.
+
+Pearson coefficients say more than the win counts. Between the baseline's per-slice PSNR and ours (seed 0, real channel) we measure r = 0.52, 0.55 and 0.62 at 20/30/50%; for SSIM, r = 0.50, 0.56 and 0.42. Positive but far from unity is what we would expect. Positive means the two methods agree about which slices are intrinsically hard: slices whose energy is concentrated at low frequencies, or whose brain fills less of the frame, are easier for both. Far from unity means our model is not applying a constant improvement on top of the baseline: it reorders the slices, which is what a prior fitted to brain anatomy should do and a generic smoothness prior cannot. Figures 10a and 10b show this slice by slice: every point is one test slice, positioned by how the two methods scored on it.
+
+[FIGURE scatter_psnr_per_channel.png] Figure 10a. Sample-wise PSNR, baseline on the horizontal axis against our model on the vertical, one point per test slice, coloured by sampling ratio (seed 0). The dashed diagonal is a tie; the per-ratio Pearson r and win count are in the legend. Both panels use equal axes so the vertical displacement is the margin. On the real channel the entire cloud sits well above the diagonal at all three ratios, with the 50% cloud highest — the widening gap of Figure 9a seen slice by slice.
+
+[FIGURE scatter_ssim_per_channel.png] Figure 10b. Sample-wise SSIM, same layout. On the real channel the two clouds do not overlap: the baseline occupies a band around 0.3–0.6 while our model is compressed against the top of the range. The imaginary-channel panel is the one place where the pooled correlation goes slightly negative (r = −0.15) and where two slices out of 1434 go against us: both consequences of that channel's zero reference (section 1.6).
+
+
+### 4.4  Four worked examples
+
+We wanted four categories of example. Three of them exist in our results and one does not, so we state that explicitly rather than force a row: there is no test slice at any sampling ratio on which the baseline beats our model on the real channel; the win rate is 1434/1434 in all three cases. In place of that row, Figure 11 shows the slice where our margin is smallest, which is the closest the baseline comes and the honest version of the same information.
+
+- Both methods do well (row 1). A slice with a large, well-centred brain and high tissue contrast. The zero-filled input is heavily wrapped, yet our reconstruction is visually equivalent to the reference and its error map is almost empty. Even here the baseline recovers only the coarse outline: its error map is saturated across the whole brain, showing the wavelet/TV prior removes the aliasing structure but does not restore the tissue.
+- Both methods struggle (row 2). A low-contrast slice from a different acquisition site. Our model still reaches a usable reconstruction but the ventricle boundaries soften and the error concentrates in the cortical ribbon; the baseline produces its worst SSIM anywhere in the panel. The failure mode is informative: when the grey/white contrast is intrinsically low, the learned prior has less structure to lock onto, and a prior fitted mostly to higher-contrast scans generalizes less well.
+- Closest the baseline comes (row 3). A slice where the aliasing happens to fold mostly into the empty background rather than onto brain tissue, which flatters the baseline's PSNR. Note its SSIM stays low even so: PSNR is being rescued by the large background area, which is exactly the artefact of a background-dominated frame we flagged in section 1.4, and the reason the tissue-contrast analysis in section 4.5 exists.
+- Our model wins by the largest margin (row 4). A slice with fine sulcal detail, where the baseline collapses to a smooth blob and our model recovers the gyral pattern and the ventricles.
+
+Read down the error-map columns and a consistent pattern appears. Our residual concentrates at the outer cortical rim and in fine sulcal detail: the high-spatial-frequency structures whose k-space lines are the ones the variable-density mask samples most sparsely. That error is not distributed randomly; it sits where the missing measurements are, which is the signature of a reconstruction limited by the acquisition rather than by the model. In contrast the baseline's residual is spread over the whole brain and retains visible horizontal banding along the phase-encode axis, i.e. it has not removed the coherent part of the aliasing at all.
+
+[FIGURE qualitative_examples_r30.png] Figure 11. Four worked examples at 30% of phase-encode lines. Columns: the acquired k-space (log magnitude, so the skipped lines show as dark stripes); the zero-filled input; the baseline; our model; the fully sampled reference; and the two absolute-error maps on a shared scale. Rows are the four categories discussed above; PSNR and SSIM are on the real channel. All images are magnitudes on a shared grey scale within each row. The vertical smearing visible in every zero-filled input is the phase-encode wraparound of Figure 3, and the k-space column lets each example be traced back to which lines were actually acquired.
+
+[FIGURE qualitative_examples_r50.png] Figure 12. The same four categories at 50% of phase-encode lines, for comparison. With twice as many lines our reconstructions become visually very close to the reference and the error maps are nearly empty, consistent with SSIM 0.992. The baseline improves much less, and its error maps still show the banding: the extra measurements are worth far more to a learned prior than to a fixed analytic one, which is the widening gap of section 4.2 seen qualitatively.
+
+
+### 4.5  Tissue contrast and CNR: what PSNR and SSIM do not measure
+
+PSNR and SSIM are the two metrics we report in full, but they are generic image-similarity measures and this dataset has a property that makes them flattering: the head occupies well under half the frame, so both metrics are partly rewarding a method for keeping the background empty. Our lectures draw the distinction we need here, between SNR and CNR — and it is the sharper question clinically. A reconstruction can score respectably on PSNR and be useless if it has flattened the grey-matter / white-matter difference, because that difference is the contrast a radiologist actually reads.
+
+We therefore added a third measurement. On every test slice we segment white matter and grey matter by intensity percentile on the reference image (a threshold-based segmentation of the kind the course's intensity-histogram lecture describes), so the same voxels are compared in all images, and measure two quantities: the relative contrast C = (SWM − SGM)/SWM, and the contrast-to-noise ratio (SWM − SGM)/σbackground, with the noise level estimated in the air outside the head. Both are reported as a ratio to the fully sampled reference, so 1.00 means the contrast survived intact. Table 5 gives the numbers and Figure 13 plots the retention ratios.
+
+Ratio | Method | WM/GM contrast | Contrast retained | WM–GM CNR | CNR retained
+20% | fully sampled reference | 0.345 | 1.00× | 91.5 | 1.00×
+20% | zero-filled input | 0.241 | 0.70× | 0.6 | 0.01×
+20% | baseline: classical CS | 0.340 | 0.98× | 1.2 | 0.01×
+20% | our model: ADMM-Net | 0.316 | 0.92× | 20.2 | 0.22×
+30% | fully sampled reference | 0.345 | 1.00× | 91.5 | 1.00×
+30% | zero-filled input | 0.313 | 0.91× | 0.9 | 0.01×
+30% | baseline: classical CS | 0.424 | 1.23× | 1.7 | 0.02×
+30% | our model: ADMM-Net | 0.332 | 0.96× | 22.2 | 0.24×
+50% | fully sampled reference | 0.345 | 1.00× | 91.5 | 1.00×
+50% | zero-filled input | 0.491 | 1.42× | 1.4 | 0.01×
+50% | baseline: classical CS | 0.528 | 1.53× | 2.1 | 0.02×
+50% | our model: ADMM-Net | 0.340 | 0.98× | 31.5 | 0.34×
+Table 5. Tissue contrast and CNR retention (478 test slices, seed 0). The reference row is the fully sampled image, so its retention is 1.00× by definition. Read the CNR column with the caveat below: these images have been preprocessed, so the reference background is almost noise-free and the absolute reference CNR of 91 is not a scanner CNR. The ordering and the order-of-magnitude differences are what carry meaning.
+
+Our model retains the WM/GM contrast to within 8% at 20% sampling and 2% at 50%, converging towards the reference as more lines are acquired; which is what a faithful reconstruction should do. The baseline's numbers are more interesting than they first look. At 20% it lands at 0.98× apparently excellent; but at 30% and 50% it overshoots to 1.23× and 1.53×. It is not preserving contrast: it is manufacturing it. Residual aliasing lands inhomogeneously across the brain and inflates the apparent difference between the two tissue compartments. Zero-filling behaves the same way (1.42× at 50%), which confirms the cause is the artifact rather than anything the baseline does. A method can move a contrast measure towards the reference for entirely the wrong reason, and only checking in both directions catches it.
+
+Of the three measures, CNR is the harshest. Our model recovers 0.22× to 0.34× of the reference CNR, an order of magnitude better than the baseline's 0.02× and the zero-filled input's 0.01× and improving steadily with the sampling ratio, but still a fraction of it. That happens because residual reconstruction error appears in the background, where the reference has effectively none, so it acts as added noise in the CNR denominator. Read carefully, this says something the PSNR table does not: at 37–48 dB PSNR and 0.92–0.99 SSIM our reconstructions look convincing and preserve tissue contrast, but they are not yet at reference noise levels, and a metric that weights the background heavily will say so. No claim about diagnostic quality can be made from PSNR and SSIM alone.
+
+[FIGURE mri_contrast_retention.png] Figure 13. Contrast and CNR retention. (a) White-matter / grey-matter contrast relative to the fully sampled reference (dashed line at 1.00). Our model approaches the reference from below at every ratio, while the baseline and the zero-filled input overshoot it at 30% and 50% because residual aliasing inflates the apparent tissue difference: being above the line is a failure, not a success. (b) The same for CNR, where all three methods fall far short and only our model reaches a non-trivial fraction of the reference.
+
+
+### 4.6  The sampling pattern behind our seed-to-seed spread
+
+We ran three seeds per configuration, intending them to measure training variance. The spread they produced was far too large for that — the test-set average moves by 5–8 dB between seeds, so we went looking for the cause, and it turned out not to be training at all. Two things differ between the three seeds: the network initialization and the mask realization. Because our mask draws line indices from a normal distribution with <tt>center_lines = 0</tt> (Listing 1), nothing forces the DC line to be acquired; and the DC line alone carries 52% of the energy of these slices (Figure 2a). Missing it means losing the overall signal level of the image, which no amount of prior can restore. Table 6 lists all nine runs and Figure 14 plots the relationship between the two.
+
+Ratio | Seed | DC line acquired? | k-space energy acquired | Zero-filled (dB) | Baseline (dB) | Our model (dB)
+20% | 0 | no | 20.4% | 21.51 | 21.93 | 39.23
+20% | 1 | yes | 72.0% | 27.08 | 28.78 | 39.92
+20% | 2 | no | 4.1% | 20.23 | 20.35 | 33.34
+30% | 0 | no | 21.9% | 21.61 | 22.18 | 40.51
+30% | 1 | yes | 75.2% | 28.01 | 30.72 | 45.81
+30% | 2 | no | 5.9% | 20.32 | 20.49 | 34.84
+50% | 0 | no | 40.8% | 22.37 | 22.96 | 46.23
+50% | 1 | yes | 94.6% | 33.39 | 38.85 | 50.31
+50% | 2 | no | 42.4% | 22.54 | 23.13 | 47.88
+Table 6. The hidden variable behind the seed spread. For each of the nine runs: whether the mask realization acquired the DC line, what fraction of the test set's total k-space energy it acquired, and the resulting test-set mean PSNR on the real channel. Rows where the DC line was acquired are highlighted: only seed 1, and it is the best seed at every sampling ratio.
+
+[BOX] The finding: our sampling pattern, not our training, drove the variance
+Across the nine runs, the fraction of the test set's k-space energy the mask actually acquired ranges from 4.1% to 94.6%, and it predicts the outcome almost perfectly: Pearson r = +0.95 with the zero-filled PSNR, +0.94 with the baseline's, and +0.77 with ours. Only seed 1 acquires the DC line, and seed 1 is the best seed at 20%, 30% and 50% alike. Our reported seed-to-seed standard deviations should be read as sampling-pattern variability, not training variability. The lower correlation for our model (+0.77 against +0.95) is itself a result: the learned prior partially compensates for a missing DC line, inferring the overall signal level from anatomy it has learned, which a POCS iteration with a generic prior cannot do. The fix is standard practice in compressed-sensing MRI and was already a config option we left at zero: force-sample a small central band (<tt>mask.center_lines</tt> > 0) so the centre of k-space is never missed, which every clinical variable-density scheme does. We quantified what that would have bought us. Averaged over 200 mask draws at 30% sampling rather than the three we happened to run, the zero-filled RMSE falls from 0.091 (our mask, capturing 73% of the energy on average) to 0.049 with three forced central lines (91%) and 0.036 with seven (96%); and the DC line goes from being acquired about half the time to always. For reference, uniform random sampling, which is more incoherent than ours, is worse than both at 0.134 and 50%: incoherence alone is not the objective. We report the experiment as we ran it rather than quietly re-running it with a better mask, because the accident is what exposed how much the sampling pattern matters, and because the corrected comparison is a fairer statement of what the two reconstruction methods can do than one tuned mask would have been.
+
+[FIGURE mri_dc_line.png] Figure 14. Which lines the mask drew, and why it mattered. (a) The three mask realizations at 30% sampling, zoomed on the centre of k-space; the dashed red line is DC. Only seed 1 acquires it, and it captures 75% of the test set's energy against 22% and 6% for the other two. (b) Captured energy against measured PSNR for all nine runs (marker shape = sampling ratio), with the Pearson correlation per method in the legend. (c) The question asked properly, over 200 mask draws instead of three: uniform random sampling is the worst despite being the most incoherent, our variable-density draw is better, and forcing a small central band is better again. The percentage under each bar is the mean fraction of the test set's k-space energy that scheme acquires.
+
+
+### 4.6b  Two constraints the network does not enforce
+
+Auditing our own model for this report turned up two places where its output violates something we already know about the acquisition. Both matter for the MRI reading of the results, and both turned out to be repairable after the fact, so we report the audit and the repair rather than only the final number.
+
+First, data consistency is soft rather than exact. The X-update blends the estimate with the measurement on the acquired lines as (y + ρFx)/(1 + ρ). That is the correct ADMM update when the measurement is noisy, but it means the reconstruction does not reproduce the lines the scanner actually acquired: with the values the networks learned (softplus ρ ranging from 0.01 to 6.1 across stages) the relative error on the acquired lines averages 1.57% and reaches 5.27% on the worst run. The classical baseline's POCS step is exact by construction, so on this specific criterion — fidelity to the measurement, the baseline was better than our model. Our forward model is noiseless (we generated the measurements ourselves with an FFT), so there is no reason to tolerate the soft version at inference; a single hard projection at the end restores exactness.
+
+Second, nothing constrains the output to be real. Section 1.5 established that the targets are magnitude images, so the true image is real and its k-space is conjugate-symmetric. The network was never told this and its output carries a non-zero imaginary part. Discarding that imaginary part is the image-domain form of the Hermitian constraint that partial-Fourier reconstruction exploits. Table 7 measures both repairs and Figure 15 plots them.
+
+Variant | PSNR real (dB) | SSIM real | PSNR imag (dB) | SSIM imag | k-space error on acquired lines
+as trained | 42.01 | 0.9550 | 56.87 | 0.9801 | 1.57%
++ exact data consistency | 42.05 | 0.9551 | 56.58 | 0.9790 | 6e-07
++ real-valued constraint | 42.29 | 0.9549 | 63.88 | 0.9961 | 1e-07
+Table 7. Enforcing two known constraints after training (all nine runs pooled: 3 ratios × 3 seeds × 478 slices). No retraining and no change to any weight: each row is the same network output with a projection applied. The projections are cheap: one FFT pair per image.
+
+Both repairs are worth having and neither is dramatic. Exact data consistency drives the k-space error from 1.57% to numerical zero while leaving the real channel effectively unchanged, which is the honest result: the network was already close to consistent, and the projection buys correctness rather than accuracy. Adding the real-valued constraint gains +0.3 dB on the real channel on average and up to +0.9 dB on the runs whose masks were worst, and it lifts the imaginary channel from 56.9 to 63.9 dB. That last number should be read for what it is rather than as an improvement in reconstruction quality: once the output is forced to be real it matches an identically zero reference exactly, so the imaginary-channel metric stops measuring anything at all and simply reports floating-point precision. It is a clean demonstration of the point section 1.6 made in the abstract; that on this dataset the imaginary channel is a property of the sampling operator, not of the anatomy.
+
+We report the main results in Table 4 without these projections, because that is the model we actually trained. The projections are implemented in <tt>src/postprocess.py</tt> and would be the first thing we changed in a second iteration: the real-valued constraint in particular belongs inside the network, applied at every stage, where it would also stop each stage from spending capacity representing a component that cannot exist.
+
+[FIGURE mri_postprocess.png] Figure 15. Enforcing two known constraints after training. (a) The defect: as trained, the reconstruction disagrees with the measured k-space lines by 0.01–5%, on a log axis; the projection drives that to numerical zero. (b) The effect on the real channel is small but always positive. (c) The imaginary channel jumps because the constraint makes the output exactly match an exactly zero reference: the metric saturates rather than the reconstruction improving.
+
+
+### 4.7  Verdict
+
+Our model wins on the real channel at all three sampling ratios, on both metrics, and on every one of the 1434 individual slice–mask pairs, by +13.8 to +19.8 dB. On the imaginary channel it wins on 96–100% of pairs, with the exceptions explained in section 4.3. Three ingredients account for the margin, and one honest caveat qualifies it.
+
+- The learned proximal operator is fitted to brain anatomy, whereas wavelet and TV encode only generic piecewise smoothness. The prior ablation isolates how much this is worth: a single-level wavelet threshold buys +0.13 dB on a phantom and nothing measurable on real data, and the calibration grid in Table 2 shows tuning the analytic prior moves it by under half a decibel. The choice of prior, not its parameters, is what changes the outcome.
+- ρ is learned per stage, so the balance between trusting the measurement and trusting the prior adapts to the aliasing level each stage actually faces. Appendix A.3 shows how much this matters: tying the weights across stages, which forces one shared ρ and one shared threshold, costs 15.3 dB.
+- Data consistency is enforced analytically at every stage, so the network never has to learn the forward operator and never contradicts the measurement. Appendix B.2 shows this buys accuracy on the real channel against a 47%-larger U-Net that has no such step.
+
+The caveat is about the baseline, not our model. A classical wavelet-plus-TV reconstruction is not normally this weak; published compressed-sensing MRI results at comparable acceleration are far better than +1 dB over zero-filling. We do not think ours is broken — the unit tests verify that the TV proximal operator agrees with scikit-image's reference solver, that POCS leaves the acquired lines exact, and that the method improves on zero-filling on a Shepp-Logan phantom (+2.21/+3.07/+5.81 dB at 20/30/50%). The difference is the sampling operator, for the reason set out in section 1.3: a 1D Cartesian mask randomizes only one image axis, so the aliasing stays partly coherent. Published results typically use 2D variable-density or radial sampling, where the artifact is far more incoherent. Our brief specifies 1D row sampling, so this is the regime we are in: and it is a regime in which a learned prior has a real structural advantage over a hand-designed sparsity prior, because it can recognize the coherent artifact as an artifact instead of mistaking it for signal. That is a fairer statement of what our comparison shows than “deep learning beats compressed sensing”.
+
+Where our model is weakest is where the physics rather than the prior binds. At 20% sampling the outer k-space is barely measured; SSIM falls to 0.92 from 0.99 at 50%, and residual blurring of fine cortical detail is visible in Figure 11. Its second weakness is more serious and is the subject of Appendix B.1: the learned data-consistency operator is tied to the pattern it trained on.
+
+
+### 4.8  A control the comparison needed: scanning at lower resolution
+
+Every result so far compares reconstruction methods that receive the same undersampled data. That leaves the more basic question unasked. If we are willing to spend only 38 of 128 repetitions, we do not have to scatter them: we could acquire 38 contiguous lines at the centre of k-space, which is simply a lower-resolution scan of the same duration, and zero-pad k-space back to 128×128 before the inverse transform. Zero-padding is sinc interpolation: it puts the image on the right matrix size and adds no information, so the result is blurred but has no aliasing. The two strategies cost the same scan time and differ only in which lines they buy. Table 8 and Figure 16 compare them.
+
+Naming the two carefully matters here, because both operations insert zeros into k-space and they are not the same thing. Padding outside the acquired extent satisfies Nyquist and interpolates; its artifact is Gibbs ringing, and the missing high frequencies were never measured. Filling the interior gaps of a randomly undersampled acquisition, which is what produces our model's input, violates Nyquist and aliases; the high frequencies were measured, just sparsely, which is exactly why a prior can recover them and cannot recover the truncated ones.
+
+Ratio | Lines | Method | PSNR real (dB) | SSIM real
+20% | 26 | low-res zero-padded (central lines only) | 33.28 ± 1.95 | 0.8614 ± 0.0279
+20% | 26 | zero-filled (variable density) | 21.51 ± 1.83 | 0.2972 ± 0.0791
+20% | 26 | classical CS (TV) | 21.93 ± 1.85 | 0.2848 ± 0.0703
+20% | 26 | ADMM-Net (ours) | 39.23 ± 1.82 | 0.9557 ± 0.0143
+30% | 38 | low-res zero-padded (central lines only) | 35.83 ± 1.90 | 0.9291 ± 0.0149
+30% | 38 | zero-filled (variable density) | 21.61 ± 1.84 | 0.3017 ± 0.0798
+30% | 38 | classical CS (TV) | 22.18 ± 1.87 | 0.2790 ± 0.0615
+30% | 38 | ADMM-Net (ours) | 40.51 ± 1.93 | 0.9621 ± 0.0133
+50% | 64 | low-res zero-padded (central lines only) | 40.05 ± 2.04 | 0.9745 ± 0.0080
+50% | 64 | zero-filled (variable density) | 22.37 ± 1.86 | 0.3899 ± 0.0809
+50% | 64 | classical CS (TV) | 22.96 ± 1.89 | 0.3429 ± 0.0446
+50% | 64 | ADMM-Net (ours) | 46.23 ± 1.98 | 0.9867 ± 0.0050
+Table 8. Matched scan time, two different acquisitions (478 test slices, seed 0). The first row of each group acquires a contiguous central band and zero-pads; the rest acquire the same number of scattered lines and reconstruct. Our model is highlighted.
+
+Our low-resolution control reaches 33.3, 35.8 and 40.0 dB at 20/30/50%, which is 11 to 17 dB better than the classical compressed-sensing reconstruction of the scattered acquisition and better than the zero-filled input by a similar margin. Stated plainly: at these sampling ratios, on this data, our classical baseline is beaten by simply not acquiring those lines. That is a result we would rather report than bury, and it sharpens the conclusion of section 4.7 considerably. It is not evidence that compressed sensing does not work; it is evidence that 1D Cartesian undersampling of a 128×128 image is a poor setting for it. A central band captures 95–99% of the k-space energy while a variable-density draw of the same size captures only 34–73% on average, so the classical prior is being asked to recover an image from a fraction of its own energy, with an artifact that is only partly incoherent.
+
+Our model clears the control by +5.9, +4.7 and +6.2 dB, and the margin grows with the sampling ratio, so the learned reconstruction does buy real resolution rather than re-interpolating a blurred image. Figure 16 shows the more useful comparison: the low-resolution image is clean, and every error it makes is a smooth blur that a reader would recognise as low resolution, whereas a learned reconstruction fails by inventing detail that looks plausible. Two honest caveats belong with the numbers. The low-resolution acquisition has genuinely higher SNR per voxel, since its voxels are larger in the phase-encode direction, and our simulation has no measurement noise at all, so it cannot show that advantage. And PSNR rewards the smooth error of a blurred image more gently than it punishes a wrong detail, so the control's score flatters it slightly relative to how the two would compare in a reading study.
+
+[FIGURE mri_zeropad.png] Figure 16. Compressed sensing against simply scanning at lower resolution. (a, b) PSNR and SSIM at matched scan time, so each group of bars spends the same number of repetitions. (c) One slice at 30%: the low-resolution scan is clean but blurred, the variable-density scan is aliased at full nominal resolution, and our model recovers most of the detail. (d) An intensity profile through the head, where the blur shows as rounded edges and the aliasing as ripple in the background. (e) Which lines each scheme measures, over the k-space energy of that slice: the contiguous band takes the centre and never sees the outer ky, while the scattered draw reaches the edge but leaves gaps everywhere.
+
+
+
+## Conclusions and Summary
+
+Unrolling a classical optimization and learning its components is markedly better, in this setting, than running that optimization with hand-chosen priors. Our ADMM-Net improves on the zero-filled input by 15–22 dB PSNR and on the calibrated classical baseline by 14–20 dB, lifting SSIM on the real channel from 0.40–0.53 to 0.92–0.99 and winning on every one of the 478 test slices at all three sampling ratios, with 317,320 parameters. But the margin is the least interesting thing we found. Four results changed how we understand the problem:
+
+- The prior matters far more than its tuning. A single-level wavelet threshold, the textbook form, is worth +0.13 dB on a phantom and nothing on real data, and no threshold value rescues it. Across an eleven-point calibration grid the properly regularized baseline's validation PSNR moves by under half a decibel. A baseline can look entirely reasonable and be doing almost nothing, which is why we report the weak variant alongside the tuned one rather than quietly dropping it.
+- The learned advantage grows with the sampling ratio, not with the difficulty of the problem. At severe undersampling the missing high frequencies bound every method equally, because no prior can invent measurements that were never made; the learned prior pays off only when there are measurements to combine it with. Any claim of the form “learning helps most when data is scarcest” is the wrong way round here.
+- Which lines the mask draws matters as much as how many. What we set up as a seed sweep turned out to measure sampling-pattern variability: the acquired fraction of the test set's k-space energy ranged from 4% to 95% across nine runs and correlated at r = +0.95 with the resulting PSNR. The single realization that acquired the DC line was the best at every ratio. Forcing a small central band to be acquired, one config value we left at zero — would have removed most of the variance we reported.
+- A low-resolution scan is a stronger competitor than the classical reconstruction. Acquiring the same number of lines contiguously at the centre of k-space and zero-padding beats our tuned compressed-sensing baseline by 11 to 17 dB at matched scan time. Our model still clears that control by 6 to 10 dB, so the learned reconstruction buys real resolution rather than re-interpolating a blurred image, but any claim that reconstruction beats simply scanning coarser has to be tested rather than assumed. We would not have known this without running it.
+- PSNR and SSIM are not sufficient, and we can show it rather than assert it. The classical baseline's white-matter / grey-matter contrast overshoots the reference by up to 53% at higher sampling ratios, because residual aliasing manufactures apparent tissue difference; and every method, ours included, recovers only a fraction of the reference CNR. A reconstruction can score well on the required metrics and still be wrong in the way that matters clinically.
+
+
+### 5.1  Limitations
+
+The dataset is not complex. The course volumes are reconstructed magnitude images, so the imaginary channel of the ground truth is identically zero. Our pipeline is complex-valued throughout and would carry phase if there were any, but the required per-channel metric therefore measures suppression of artefactual phase rather than phase fidelity, and we have reported it on that basis. A truly complex dataset (or raw k-space) would make the imaginary channel meaningful and is the single change that would most improve this evaluation.
+
+This is a 2D single-coil retrospective simulation. Real accelerated MRI is multi-coil: parallel imaging uses the spatial variation of the coil sensitivities as extra encoding, and a realistic data-consistency step would incorporate sensitivity maps rather than a single FFT. Real acquisitions are also 3D, carry real measurement noise instead of an exactly consistent forward model, and are subject to motion and off-resonance effects that our simulation excludes entirely. Because we use one central slice per subject, our model never sees the through-plane context a 3D method would exploit.
+
+The learned operator is tied to its sampling pattern. Each network is trained against a single mask realization, and Appendix B.1 measures what that costs: 13.7 dB when the same network is evaluated on mask realizations it never saw, against effectively nothing for the training-free baseline. In deployment terms this matters in deployment, a scanner does not use one fixed random pattern, and it is a limitation the classical baseline does not share. The fix is the first item below.
+
+Our metrics are proxies. PSNR and SSIM, and even the contrast and CNR measures we added, do not certify that a reconstruction is diagnostically safe. That would require a radiologist reading study or a downstream task metric (lesion detection, volumetry, brain-age prediction from the reconstruction), none of which is in scope here.
+
+
+### 5.2  Further work
+
+- Randomize the mask during training, drawing a fresh realization per batch, so one network covers a family of sampling patterns instead of memorizing one. This directly targets the generalization gap of Appendix B.1 and costs nothing but training time.
+- Force a central k-space band (<tt>mask.center_lines</tt> > 0), as every clinical variable-density scheme does. Section 4.6 shows this alone would remove most of the variance we observed.
+- Extend data consistency to multi-coil with sensitivity maps, which is the step that would make the forward model resemble a real accelerated acquisition.
+- Replace the fixed eight-stage unrolling with a learned stopping criterion, so easy slices spend fewer stages; the depth sweep in Appendix A.1 shows the marginal value of a stage falls sharply after the third.
+- Evaluate on a downstream task. This dataset comes with subject ages, so brain-age prediction accuracy from the reconstruction is a natural task-based metric and would test something PSNR cannot.
+
+
+
+## Appendix A  Ablations
+
+Every ablation below is trained at 30% sampling for 100 epochs, one seed per point, and reports PSNR and SSIM averaged over the real and imaginary channels (this is the one place we use the combined metric, because the ablations are internal comparisons between variants of the same model, so the caveat of section 1.6 applies equally to every row). Absolute values are therefore not comparable with Table 4; the differences within each table are the point.
+
+
+### A.1  Unrolling depth
+
+PSNR rises monotonically with the number of ADMM stages, and most of the benefit arrives early: going from 1 to 3 stages is worth 5.3 dB, while 5 to 8 adds 1.5 dB. The single-stage network has no unrolling left, it is a plain denoiser with one data-consistency step — and loses 7.7 dB against the eight-stage one. That the curve rises at all is the evidence that the iterative structure, and not merely the parameter count, is doing the work. Table A.1 and Figure A.1 give the sweep.
+
+ADMM stages | 1 | 3 | 5 | 8
+PSNR (dB) | 41.74 | 47.05 | 47.98 | 49.46
+SSIM | 0.914 | 0.974 | 0.979 | 0.982
+Table A.1. PSNR and SSIM against unrolling depth. Diminishing returns after three stages motivate the learned stopping criterion proposed in section 5.2.
+
+[FIGURE depth_vs_psnr.png] Figure A.1. PSNR against unrolling depth. Error bars span the runs available at each depth.
+
+
+### A.2  Training loss
+
+Image-domain losses beat both the structural and the frequency-domain alternative, and <tt>mse_l1</tt>, MSE plus a small L1 term, is what the headline runs use. Two results are worth noting. The pure SSIM loss produces the best SSIM per unit of PSNR but the worst PSNR, which is the expected trade-off: it optimizes local structure and tolerates a global intensity offset. The k-space loss, which penalizes error in the Fourier domain, does slightly worse than the image-domain losses despite being the more natural choice given that the measurements are in k-space: plausibly because a uniform k-space penalty spends its budget on the high frequencies that dominate by count but contribute little energy, while an image-domain loss implicitly weights by energy. Table A.2 and Figure A.2 give the four variants.
+
+Loss | <tt>mse_l1</tt> | <tt>mse</tt> | <tt>kspace</tt> | <tt>ssim</tt>
+PSNR (dB) | 47.72 | 47.32 | 46.98 | 43.68
+SSIM | 0.972 | 0.969 | 0.973 | 0.975
+Table A.2. PSNR and SSIM by training loss.
+
+[FIGURE loss_ablation.png] Figure A.2. Training-loss ablation.
+
+
+### A.3  Architecture: nonlinearity and weight sharing
+
+Our learnable soft-threshold slightly beats the paper-faithful piecewise-linear nonlinearity (48.0 against 46.7 dB), but the dominant effect by far is weight sharing: forcing all stages to share parameters costs 15.3 dB with the soft-threshold and 20.6 dB with the piecewise-linear nonlinearity. That is specific to unrolled solvers and worth spelling out: each stage of the unrolling operates at a different aliasing and residual level, so it needs its own threshold and its own ρ. Tying them collapses the unrolling into the same operator applied eight times, which destroys exactly the benefit the depth sweep in A.1 demonstrates. This is also the clearest evidence that our model is not simply a deep network that happens to work: its advantage comes from stage-specific reconstruction behaviour, not from capacity. Table A.3 and Figure A.3 give the four variants.
+
+Variant | PSNR (dB) | SSIM
+soft-threshold, independent weights | 48.03 | 0.979
+piecewise-linear, independent weights | 46.67 | 0.966
+soft-threshold, shared weights | 32.73 | 0.628
+piecewise-linear, shared weights | 26.09 | 0.329
+Table A.3. Architecture ablation. Weight sharing, not the choice of nonlinearity, is what decides the outcome.
+
+[FIGURE structure_ablation.png] Figure A.3. Architecture ablation.
+
+
+
+## Appendix B  Two checks on what the model has learned
+
+
+### B.1  Generalization to unseen undersampling patterns
+
+Each trained network was re-evaluated, without any retraining, under mask realizations drawn with other seeds, with the classical baseline as a control: having no learned parameters, its variation across realizations reflects only how intrinsically hard each realization is. Table B.1 and Figure B.1 give the result, which is the clearest negative finding we have.
+
+Method | Trained-on mask (dB) | Unseen masks (dB) | Gap (dB)
+Our model: ADMM-Net | 42.01 | 28.27 | +13.73
+Baseline: classical CS (control) | 25.49 | 27.17 | −1.68
+Table B.1. Performance on the mask seen in training against unseen realizations (PSNR, real channel). The baseline's small negative gap simply means the four unseen realizations happened to be marginally easier than the one it was evaluated against; with no learned parameters it cannot overfit a pattern.
+
+Our model loses 13.7 dB when the sampling pattern changes, dropping from 42.0 to 28.3 dB, while the baseline is effectively unaffected. The learned data-consistency weights and the learned thresholds have specialized to one operator. In the worst individual case a network trained at 50% sampling collapses to under 10 dB on a pattern it never saw; effectively a failure, not a degradation. Both readings below are fair. As a criticism, our headline numbers are optimistic: because a real scanner does not reuse one fixed random pattern, and the training-free baseline has a robustness advantage we did not credit it with elsewhere. As a design lesson: this is a consequence of training against a single realization rather than of unrolling itself, and randomizing the mask per batch during training is the standard remedy (section 5.2).
+
+[FIGURE crossmask.png] Figure B.1. Is the reconstruction specific to one undersampling pattern? Mean PSNR on the real channel for the mask realization seen in training against realizations never seen, per method, with error bars across realizations. The large error bar on the unseen bar for our model reflects the collapse cases described above.
+
+
+### B.2  Model-based structure against raw capacity: a U-Net reference
+
+To separate the contribution of the model-based structure from that of network capacity, we trained a plain U-Net that maps the zero-filled image directly to a clean one, with no data-consistency step and therefore no knowledge of the forward operator. It is the larger model — 467,554 parameters against our 317,320, i.e. 47% more; and was trained identically at seed 0.
+
+Ratio | Model | Params | PSNR real (dB) | SSIM real | PSNR imag (dB) | SSIM imag
+20% | U-Net (no data consistency) | 467,554 | 38.94 | 0.9623 | 68.81 | 0.9993
+20% | Our model: ADMM-Net | 317,320 | 39.23 | 0.9557 | 54.52 | 0.9809
+30% | U-Net (no data consistency) | 467,554 | 40.33 | 0.9721 | 69.17 | 0.9992
+30% | Our model: ADMM-Net | 317,320 | 40.51 | 0.9621 | 51.68 | 0.9734
+50% | U-Net (no data consistency) | 467,554 | 43.16 | 0.9833 | 77.22 | 0.9998
+50% | Our model: ADMM-Net | 317,320 | 46.23 | 0.9867 | 52.64 | 0.9696
+Table B.2. Our model against a larger U-Net with no data-consistency step (seed 0, 478 test slices). Our model is highlighted. The two channels disagree, and the disagreement is exactly the effect section 1.6 predicts.
+
+On the real channel, the anatomically meaningful one, our model is ahead at every ratio, by +0.29, +0.18 and +3.08 dB, with 32% fewer parameters, and the margin grows with the sampling ratio just as it does against the classical baseline. The model-based structure is worth its constraint. The U-Net's SSIM on the real channel is marginally higher than ours at 20% and 30% (0.962 against 0.956 at 20%) and lower at 50%, so on that one metric the two are close.
+
+The imaginary channel is where the comparison becomes instructive rather than merely favourable. There the U-Net appears to win overwhelmingly: 69 against 55 dB at 20% sampling, and SSIM 0.999 against 0.98. Taken at face value this would say the U-Net reconstructs phase far better. It says the opposite. Because the reference imaginary channel is identically zero, the way to score near-perfectly is to output zero; a network with no data-consistency constraint is free to do exactly that, and evidently learns to. Our model cannot: its data-consistency step re-imposes the measured, non-Hermitian k-space at every one of the eight stages, which re-injects a spurious imaginary component by construction (section 1.6). The U-Net's advantage on that channel is a direct consequence of ignoring the measurement — which is a good illustration of why a metric has to be interpreted through the physics of the data rather than read off a table, and why we report the two channels separately throughout. Figure B.2 plots the same comparison, but on the channel-averaged metric, so it inherits that inflation: the real-channel column of Table B.2 is the one to trust.
+
+[FIGURE model_vs_unet.png] Figure B.2. Model-based unrolling against a generic CNN. Note this figure plots the average of the two channels, so it inherits the imaginary channel's inflation; Table B.2 separates them, and the real-channel column there is the comparison to trust.
+
+
+
+## Appendix C  Reproducibility
+
+Everything in this report is generated from code. We build the document itself with <tt>python -m src.build_report</tt>, which reads every number it quotes from the logged results, so the prose, the tables and the figures cannot disagree with each other or drift out of date.
+
+- Fixed split. An age-stratified 80/10/10 split over subjects, seeded independently of the training seed, so every run and every seed sees the same partition; each run records its own split to <tt>split.json</tt>.
+- Global seeding of Python, NumPy and PyTorch, with per-run manifests recording the full config, the metrics and a timestamp.
+- Config-hash de-duplication. A run's id is a hash of its whole config, so sweeps are resumable and a run is skipped only when it appears in both result CSVs; a run interrupted between the two writes is redone rather than left half-logged.
+- A dataset-free test suite (<tt>pytest -q</tt>, a few seconds) that checks the properties this report claims: that the mask keeps whole phase-encode rows in exactly the requested fraction, drawn without replacement, with variable density and reproducibly from its seed; that the forward model and the POCS step leave the acquired lines exact; that the TV proximal operator agrees with scikit-image's reference solver; that the classical baseline improves on zero-filling on a phantom while the single-level variant demonstrably does not; and that run ids are reproducible and path-independent.
+- A slice cache keyed by a fingerprint of the split and the preprocessing, so every run consumes byte-identical data and the figures can be regenerated on a machine that has the cache but not the volumes.
+- Relative paths only, so the same config runs locally, on the university HPC cluster or on Colab.
+
+
+### C.1  References
+
+- Y. Yang, J. Sun, H. Li, Z. Xu. Deep ADMM-Net for Compressive Sensing MRI. NIPS, 2016. (The unrolling our model modernizes.)
+- M. Lustig, D. Donoho, J. M. Pauly. Sparse MRI: The application of compressed sensing for rapid MR imaging. Magnetic Resonance in Medicine, 2007. (The wavelet + TV prior and the incoherence argument used by our baseline.)
+- A. Chambolle. An algorithm for total variation minimization and applications. Journal of Mathematical Imaging and Vision, 2004. (The TV proximal solver.)
+- J. Zhang, B. Ghanem. ISTA-Net: Interpretable Optimization-Inspired Deep Network for Image Compressive Sensing. CVPR, 2018. (An alternative unrolling, implemented in <tt>src/baselines/</tt>.)
+- R. Shaul, I. David, O. Shitrit, T. Riklin Raviv. Subsampled brain MRI reconstruction by generative adversarial neural networks. Medical Image Analysis, 2020.
+- T. Riklin Raviv. Magnetic Resonance Imaging 361.2.6501, course lectures: class 3 (contrast mechanisms, relaxation times), class 5 (gradients and encoding), class 6 (image formation, k-space filling, resolution / SNR / CNR / scan-time trade-offs).
+- C. Westbrook. MRI at a Glance. (Course reference text.)
+

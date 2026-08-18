@@ -1,0 +1,22 @@
+# Authors: Michal Yechezkel (ID: 322556267), Almog Talker (ID: 322546680)
+# Appendix ablation 3/3: the "meaningful variation" of the model.
+# Contrasts the two ADMM-Net regularization nonlinearities -- a modernized learnable
+# soft-threshold vs the paper-faithful piecewise-linear prior -- with and without
+# weight sharing across unrolled stages.
+#
+# epochs is 100 here (against 40 for the headline comparison) so that every variant gets
+# the same, generous training budget and the comparison is not confounded by one variant
+# converging more slowly. Note that `train.epochs` enters the run-id hash, so editing it
+# invalidates the completed runs and forces a full retrain -- leave it at the value the
+# reported results were produced with.
+base: configs/default.yaml
+
+fixed:
+  name: structure_ablation
+  mask.sampling_ratio: 0.3
+  train.epochs: 100
+
+grid:
+  model.name: [admmnet_softthresh, admmnet_pwl]
+  model.share_weights: [false, true]
+  train.seed: [0]

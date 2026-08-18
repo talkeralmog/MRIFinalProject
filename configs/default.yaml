@@ -1,0 +1,77 @@
+# Authors: Michal Yechezkel (ID: 322556267), Almog Talker (ID: 322546680)
+# Base configuration. Experiment configs in configs/experiments/ inherit from this
+# via an `inherit: ../default.yaml` key and override only what they need.
+#
+# CAUTION: a run's id is a hash of its whole config (paths excluded), so changing any value
+# here changes the id of EVERY run and the completed experiments would all be retrained from
+# scratch. Comments are free -- values are not. To try something different, override it on
+# the command line (`--set model.channels=32`) or in a new file under configs/experiments/.
+#
+# The classical baseline's own knobs (`lam`, `tv_weight`, `wavelet_levels`) deliberately do
+# not live here: their tuned values are the class defaults in src/baselines/classical_cs.py,
+# so adding them to this shared `model` block cannot invalidate the trained runs.
+
+name: default
+
+paths:
+  # Resolved at runtime by src/config.py depending on the environment.
+  colab:
+    mount_drive: true
+    data_root: /content/drive/Shareddrives/mri_reconstruction
+    results_root: /content/drive/Shareddrives/mri_reconstruction/results
+  local:
+    # data_root must contain both the metadata CSVs and the NumPy directory.
+    # On the HPC server the real dataset dir is 'brain_age ' (note the trailing space);
+    # the ~/data symlink points to it correctly, so we use that. '~' is expanded in code.
+    data_root: ~/data
+    results_root: ./results
+    cache_root: ./cache          # one-time pre-extracted slice cache (local, fast)
+
+data:
+  image_size: 128
+  central_slice_only: true       # keep only the single central slice per subject (fast)
+  max_slices_per_subject: 1      # ignored when central_slice_only is true
+  central_fraction: [0.30, 0.70] # used only when central_slice_only is false
+  slice_axis: 2                  # axis of the 3D volume along which to slice
+  min_signal: 0.01               # drop near-empty slices (by mean magnitude)
+  split: [0.8, 0.1, 0.1]         # train / val / test, applied at the SUBJECT level
+  split_seed: 0                  # fixed seed for the split (independent of train.seed)
+  # max_train_subjects: 1500     # optional: cap train subjects (age-stratified) for speed
+  batch_size: 4
+  # --- metadata / cross-referencing (professor's update) ---
+  numpy_dir: selected_npy        # complex .npy volumes, under data_root
+  meta_csvs: [student_train_metadata.csv, student_val_metadata.csv, student_test_metadata.csv]
+  id_col: Subject                # subject identifier column in the CSVs
+  age_col: Age                   # column used for the age-stratified split
+  path_col: filePath             # CSV column giving each scan's file path (matched by basename)
+  npy_name_template: "{id}.npy"  # fallback if path_col is absent
+  age_bins: 4                    # number of quantile age bins for stratification
+
+mask:
+  name: gaussian1d               # 1D variable-density row undersampling (course spec)
+  sampling_ratio: 0.3            # fraction of phase-encode lines kept (0.2 / 0.3 / 0.5)
+  std_scale: 0.25                # std of the sampling normal, as a fraction of #rows
+  center_lines: 0                # optionally force-sample this many central lines
+
+model:
+  name: admmnet_softthresh
+  num_stages: 8
+  channels: 64
+  share_weights: false
+  use_bn: true
+  use_residual: true
+  rho_init: 0.1
+
+loss:
+  name: mse_l1
+  mse_w: 1.0
+  l1_w: 0.1
+
+train:
+  epochs: 40
+  lr: 5.0e-4
+  optimizer: adam
+  weight_decay: 0.0
+  seed: 0
+  num_workers: 2
+  prefer_cuda: true

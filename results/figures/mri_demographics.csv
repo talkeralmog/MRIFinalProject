@@ -1,0 +1,4 @@
+split,subjects,age mean,age std,age min,age max,median,female,male,sex unknown,cohorts
+train,3833,26.3,15.94,5.0,84.0,,0,0,3833,21
+val,479,26.32,16.7,5.0,85.0,,0,0,479,19
+test,479,25.98,15.53,5.0,82.0,,0,0,479,20

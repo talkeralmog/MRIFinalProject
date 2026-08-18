@@ -1,0 +1,4 @@
+sampling ratio,conjugate pairs kept,imag energy share,PSNR_imag of zero-filling (dB),symmetrized mask rate,"PSNR_imag, symmetrized (dB)"
+0.2,0.462,0.4601,30.27,0.312,171.4
+0.3,0.421,0.4173,30.34,0.469,171.0
+0.5,0.562,0.031,38.94,0.719,170.6

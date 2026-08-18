@@ -1,0 +1,126 @@
+{
+  "run_id": "unet_reference_b74866e348",
+  "config": {
+    "name": "unet_reference",
+    "paths": {
+      "colab": {
+        "mount_drive": true,
+        "data_root": "/content/drive/Shareddrives/mri_reconstruction",
+        "results_root": "/content/drive/Shareddrives/mri_reconstruction/results"
+      },
+      "local": {
+        "data_root": "~/data",
+        "results_root": "./results",
+        "cache_root": "./cache"
+      },
+      "data_root": "/truenas/home/yechezmi/data",
+      "results_root": "./results",
+      "cache_root": "./cache"
+    },
+    "data": {
+      "image_size": 128,
+      "central_slice_only": true,
+      "max_slices_per_subject": 1,
+      "central_fraction": [
+        0.3,
+        0.7
+      ],
+      "slice_axis": 2,
+      "min_signal": 0.01,
+      "split": [
+        0.8,
+        0.1,
+        0.1
+      ],
+      "split_seed": 0,
+      "batch_size": 4,
+      "numpy_dir": "selected_npy",
+      "meta_csvs": [
+        "student_train_metadata.csv",
+        "student_val_metadata.csv",
+        "student_test_metadata.csv"
+      ],
+      "id_col": "Subject",
+      "age_col": "Age",
+      "path_col": "filePath",
+      "npy_name_template": "{id}.npy",
+      "age_bins": 4
+    },
+    "mask": {
+      "name": "gaussian1d",
+      "sampling_ratio": 0.5,
+      "std_scale": 0.25,
+      "center_lines": 0
+    },
+    "model": {
+      "name": "unet",
+      "num_stages": 8,
+      "channels": 32,
+      "share_weights": false,
+      "use_bn": true,
+      "use_residual": true,
+      "rho_init": 0.1,
+      "depth": 2
+    },
+    "loss": {
+      "name": "mse_l1",
+      "mse_w": 1.0,
+      "l1_w": 0.1
+    },
+    "train": {
+      "epochs": 40,
+      "lr": 0.0005,
+      "optimizer": "adam",
+      "weight_decay": 0.0,
+      "seed": 0,
+      "num_workers": 2,
+      "prefer_cuda": true
+    }
+  },
+  "metrics": {
+    "n_params": 467554,
+    "sampling_rate": 0.5,
+    "val": {
+      "psnr_real_mean": 43.013240543437156,
+      "psnr_real_std": 1.913378661622784,
+      "psnr_imag_mean": 77.19749133721274,
+      "psnr_imag_std": 6.6731124314204795,
+      "ssim_real_mean": 0.9826557769407062,
+      "ssim_real_std": 0.007202974667933117,
+      "ssim_imag_mean": 0.9997966201170999,
+      "ssim_imag_std": 0.000343812196931164,
+      "nmse_mean": 0.005612199358537109,
+      "nmse_std": 0.0034110000991205603,
+      "n_images": 479,
+      "loss": 0.0005109397020523431
+    },
+    "test": {
+      "psnr_real_mean": 43.15578001014358,
+      "psnr_real_std": 1.8910907183623091,
+      "psnr_imag_mean": 77.2150864062449,
+      "psnr_imag_std": 6.590655131050085,
+      "ssim_real_mean": 0.9832529971789117,
+      "ssim_real_std": 0.006782992465792856,
+      "ssim_imag_mean": 0.9997987949199756,
+      "ssim_imag_std": 0.000345957499125425,
+      "nmse_mean": 0.0052524432242812905,
+      "nmse_std": 0.002611236043437401,
+      "n_images": 478,
+      "loss": 0.0004974241562335748
+    },
+    "zero_filled_test": {
+      "psnr_real_mean": 22.37435620599212,
+      "psnr_real_std": 1.8588045648608604,
+      "psnr_imag_mean": 37.945002049082994,
+      "psnr_imag_std": 1.8392441945047437,
+      "ssim_real_mean": 0.38988579931244194,
+      "ssim_real_std": 0.08092677839774058,
+      "ssim_imag_mean": 0.7000689712279012,
+      "ssim_imag_std": 0.06716862048605043,
+      "nmse_mean": 0.5957092581683123,
+      "nmse_std": 0.04867515658616773,
+      "n_images": 478
+    }
+  },
+  "timestamp": "2026-08-04T01:53:53"
+}

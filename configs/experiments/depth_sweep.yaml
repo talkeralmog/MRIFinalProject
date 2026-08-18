@@ -1,0 +1,23 @@
+# Authors: Michal Yechezkel (ID: 322556267), Almog Talker (ID: 322546680)
+# Appendix ablation 1/3: unrolling depth.
+# Single varying axis: num_stages, the number of unrolled ADMM iterations. `1` is a
+# degenerate single-stage reference so the marginal value of unrolling is visible;
+# 3/5/8 trace the accuracy-vs-depth curve and the point of diminishing returns.
+# Evaluated at the middle sampling ratio (0.3) to keep runtime manageable.
+#
+# epochs is 100 here (against 40 for the headline comparison): every point must get the
+# same training budget for the depth comparison to mean anything, and the deeper networks
+# are the slowest to converge. Note that `train.epochs` enters the run-id hash, so editing
+# it invalidates the completed runs and forces a full retrain -- leave it at the value the
+# reported results were produced with.
+base: configs/default.yaml
+
+fixed:
+  name: depth_sweep
+  model.name: admmnet_softthresh
+  mask.sampling_ratio: 0.3
+  train.epochs: 100
+
+grid:
+  model.num_stages: [1, 3, 5, 8]
+  train.seed: [0]

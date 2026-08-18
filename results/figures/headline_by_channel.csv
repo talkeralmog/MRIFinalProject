@@ -1,0 +1,13 @@
+sampling ratio,method,psnr_real,psnr_imag,ssim_real,ssim_imag,n
+0.2,zero-filled input (no reconstruction),22.94 ± 3.50,33.88 ± 5.07,0.3868 ± 0.1345,0.4973 ± 0.2325,1434
+0.2,naive CS (single-level wavelet),22.92 ± 3.49,33.57 ± 4.71,0.3846 ± 0.1338,0.4900 ± 0.2240,1434
+0.2,baseline: classical CS (wavelet $\ell_1$ + TV),23.69 ± 4.10,35.90 ± 5.35,0.3963 ± 0.1371,0.5247 ± 0.2616,1434
+0.2,our model: unrolled ADMM-Net,37.50 ± 3.53,54.17 ± 5.58,0.9243 ± 0.0591,0.9799 ± 0.0172,1434
+0.3,zero-filled input (no reconstruction),23.31 ± 3.84,33.62 ± 4.94,0.4029 ± 0.1612,0.5022 ± 0.2347,1434
+0.3,naive CS (single-level wavelet),23.29 ± 3.83,33.30 ± 4.56,0.4012 ± 0.1599,0.4944 ± 0.2255,1434
+0.3,baseline: classical CS (wavelet $\ell_1$ + TV),24.46 ± 4.86,36.48 ± 5.53,0.4277 ± 0.1699,0.5559 ± 0.2633,1434
+0.3,our model: unrolled ADMM-Net,40.39 ± 4.88,55.78 ± 9.39,0.9490 ± 0.0434,0.9751 ± 0.0237,1434
+0.5,zero-filled input (no reconstruction),26.10 ± 5.50,38.53 ± 2.64,0.5240 ± 0.1967,0.7178 ± 0.1321,1434
+0.5,naive CS (single-level wavelet),26.06 ± 5.40,38.59 ± 2.39,0.5221 ± 0.1938,0.7219 ± 0.1280,1434
+0.5,baseline: classical CS (wavelet $\ell_1$ + TV),28.31 ± 7.68,45.17 ± 1.50,0.5306 ± 0.2769,0.9251 ± 0.0384,1434
+0.5,our model: unrolled ADMM-Net,48.14 ± 2.55,60.68 ± 10.58,0.9918 ± 0.0053,0.9854 ± 0.0165,1434

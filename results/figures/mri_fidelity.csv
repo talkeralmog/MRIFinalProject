@@ -1,0 +1,7 @@
+sampling ratio,slice,method,lines,relative spectrum error
+0.3,151,zero-filled input,acquired,0.6971
+0.3,151,zero-filled input,inferred,0.6071
+0.3,151,baseline: classical CS,acquired,0.635
+0.3,151,baseline: classical CS,inferred,0.5653
+0.3,151,our model: ADMM-Net,acquired,0.0335
+0.3,151,our model: ADMM-Net,inferred,0.1332

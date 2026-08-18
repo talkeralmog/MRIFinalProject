@@ -1,0 +1,131 @@
+nohup: ignoring input
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/3411.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/A00038718.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/CorrSWU_25858.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/CorrUM_26183.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/NDARBV630BK6.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/sub84845.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:229: UserWarning: cross-reference dropped 247/5242 metadata rows with no matching .npy on disk (expected, per the professor's update).
+  warnings.warn(
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/3411.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/A00038718.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/CorrSWU_25858.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/CorrUM_26183.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/NDARBV630BK6.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:145: UserWarning: ignoring empty (0-byte) file during discovery: /truenas/home/yechezmi/data/selected_npy/sub84845.npy
+  warnings.warn(f"ignoring empty (0-byte) file during discovery: {full}")
+/truenas/home/yechezmi/MRI/src/dataset.py:229: UserWarning: cross-reference dropped 247/5242 metadata rows with no matching .npy on disk (expected, per the professor's update).
+  warnings.warn(
+sweep: configs/experiments/loss_ablation.yaml
+base: configs/default.yaml | runs: 4 | already complete: 23
+results csv: ./results/runs.csv
+
+[1/4] RUN   loss_ablation_f5f7ad568a  loss.name=mse, train.seed=0
+run_id=loss_ablation_f5f7ad568a | device=cuda | params=317,320 | trainable=True | sampling=29.7%
+resuming from epoch 4/100 (best_val=0.004046)
+epoch   4/100 | train 0.004537 | val 0.009729 | val PSNR 25.97
+epoch   5/100 | train 0.006894 | val 0.002990 | val PSNR 30.29 *
+epoch   6/100 | train 0.002555 | val 0.001970 | val PSNR 31.97 *
+epoch   7/100 | train 0.001549 | val 0.001306 | val PSNR 33.33 *
+epoch   8/100 | train 0.001173 | val 0.001011 | val PSNR 34.14 *
+epoch   9/100 | train 0.001020 | val 0.000959 | val PSNR 34.56 *
+epoch  10/100 | train 0.000842 | val 0.000787 | val PSNR 35.19 *
+epoch  11/100 | train 0.000802 | val 0.000733 | val PSNR 35.52 *
+epoch  12/100 | train 0.000647 | val 0.000591 | val PSNR 36.31 *
+epoch  13/100 | train 0.000592 | val 0.000628 | val PSNR 36.30
+epoch  14/100 | train 0.000552 | val 0.000519 | val PSNR 36.79 *
+epoch  15/100 | train 0.000641 | val 0.000674 | val PSNR 35.95
+epoch  16/100 | train 0.000500 | val 0.000458 | val PSNR 37.48 *
+epoch  17/100 | train 0.000453 | val 0.000442 | val PSNR 37.75 *
+epoch  18/100 | train 0.000424 | val 0.000443 | val PSNR 37.45
+epoch  19/100 | train 0.000407 | val 0.000399 | val PSNR 38.15 *
+epoch  20/100 | train 0.000379 | val 0.000358 | val PSNR 38.57 *
+epoch  21/100 | train 0.000358 | val 0.000377 | val PSNR 38.19
+epoch  22/100 | train 0.000349 | val 0.000378 | val PSNR 38.41
+epoch  23/100 | train 0.000328 | val 0.000317 | val PSNR 39.00 *
+epoch  24/100 | train 0.000319 | val 0.000339 | val PSNR 38.76
+epoch  25/100 | train 0.000305 | val 0.000588 | val PSNR 36.81
+epoch  26/100 | train 0.000305 | val 0.000278 | val PSNR 39.57 *
+epoch  27/100 | train 0.000288 | val 0.000293 | val PSNR 39.47
+epoch  28/100 | train 0.000278 | val 0.000280 | val PSNR 39.60
+epoch  29/100 | train 0.000267 | val 0.001411 | val PSNR 33.59
+epoch  30/100 | train 0.000404 | val 0.000310 | val PSNR 39.15
+epoch  31/100 | train 0.000282 | val 0.000287 | val PSNR 39.46
+epoch  32/100 | train 0.000262 | val 0.000266 | val PSNR 39.76 *
+epoch  33/100 | train 0.000252 | val 0.000270 | val PSNR 39.86
+epoch  34/100 | train 0.000241 | val 0.000246 | val PSNR 40.09 *
+epoch  35/100 | train 0.000229 | val 0.000252 | val PSNR 40.09
+epoch  36/100 | train 0.000224 | val 0.000235 | val PSNR 40.28 *
+epoch  37/100 | train 0.000251 | val 0.000229 | val PSNR 40.40 *
+epoch  38/100 | train 0.000214 | val 0.000224 | val PSNR 40.51 *
+epoch  39/100 | train 0.000212 | val 0.000290 | val PSNR 39.48
+epoch  40/100 | train 0.000202 | val 0.000236 | val PSNR 40.27
+epoch  41/100 | train 0.000199 | val 0.000331 | val PSNR 38.87
+epoch  42/100 | train 0.000198 | val 0.000218 | val PSNR 40.55 *
+epoch  43/100 | train 0.000189 | val 0.000187 | val PSNR 41.18 *
+epoch  44/100 | train 0.000186 | val 0.000207 | val PSNR 40.79
+epoch  45/100 | train 0.000182 | val 0.000215 | val PSNR 40.64
+epoch  46/100 | train 0.000180 | val 0.000758 | val PSNR 36.22
+epoch  47/100 | train 0.000375 | val 0.000246 | val PSNR 40.07
+epoch  48/100 | train 0.000219 | val 0.000213 | val PSNR 40.70
+epoch  49/100 | train 0.000195 | val 0.000203 | val PSNR 40.87
+epoch  50/100 | train 0.000182 | val 0.000189 | val PSNR 41.16
+epoch  51/100 | train 0.000176 | val 0.000185 | val PSNR 41.24 *
+epoch  52/100 | train 0.000173 | val 0.000196 | val PSNR 41.08
+epoch  53/100 | train 0.000173 | val 0.000193 | val PSNR 41.13
+epoch  54/100 | train 0.000190 | val 0.000205 | val PSNR 40.84
+epoch  55/100 | train 0.000174 | val 0.000174 | val PSNR 41.49 *
+epoch  56/100 | train 0.000165 | val 0.000191 | val PSNR 41.20
+epoch  57/100 | train 0.000162 | val 0.000179 | val PSNR 41.35
+epoch  58/100 | train 0.000161 | val 0.000245 | val PSNR 40.09
+epoch  59/100 | train 0.000160 | val 0.000181 | val PSNR 41.25
+epoch  60/100 | train 0.000157 | val 0.000175 | val PSNR 41.49
+epoch  61/100 | train 0.000157 | val 0.000166 | val PSNR 41.69 *
+epoch  62/100 | train 0.000156 | val 0.000256 | val PSNR 39.87
+epoch  63/100 | train 0.000153 | val 0.000156 | val PSNR 41.90 *
+epoch  64/100 | train 0.000150 | val 0.000162 | val PSNR 41.80
+epoch  65/100 | train 0.000151 | val 0.000181 | val PSNR 41.31
+epoch  66/100 | train 0.000148 | val 0.000253 | val PSNR 39.68
+epoch  67/100 | train 0.000148 | val 0.000197 | val PSNR 41.06
+epoch  68/100 | train 0.000154 | val 0.000236 | val PSNR 40.28
+epoch  69/100 | train 0.000143 | val 0.000160 | val PSNR 41.86
+epoch  70/100 | train 0.000150 | val 0.000153 | val PSNR 41.98 *
+epoch  71/100 | train 0.000143 | val 0.000679 | val PSNR 36.11
+epoch  72/100 | train 0.000157 | val 0.000148 | val PSNR 42.17 *
+epoch  73/100 | train 0.000139 | val 0.000166 | val PSNR 41.66
+epoch  74/100 | train 0.000141 | val 0.000169 | val PSNR 41.63
+epoch  75/100 | train 0.000139 | val 0.000164 | val PSNR 41.75
+epoch  76/100 | train 0.000139 | val 0.000191 | val PSNR 41.13
+epoch  77/100 | train 0.000138 | val 0.000147 | val PSNR 42.19 *
+epoch  78/100 | train 0.000141 | val 0.000188 | val PSNR 41.18
+epoch  79/100 | train 0.000136 | val 0.000193 | val PSNR 41.13
+epoch  80/100 | train 0.000134 | val 0.000229 | val PSNR 40.35
+epoch  81/100 | train 0.000135 | val 0.000174 | val PSNR 41.58
+epoch  82/100 | train 0.000134 | val 0.000156 | val PSNR 41.90
+epoch  83/100 | train 0.000132 | val 0.000146 | val PSNR 42.15 *
+epoch  84/100 | train 0.000133 | val 0.000156 | val PSNR 41.95
+epoch  85/100 | train 0.000132 | val 0.000142 | val PSNR 42.29 *
+epoch  86/100 | train 0.000132 | val 0.000165 | val PSNR 41.75
+epoch  87/100 | train 0.000131 | val 0.000223 | val PSNR 40.46
+epoch  88/100 | train 0.000130 | val 0.000145 | val PSNR 42.18
+epoch  89/100 | train 0.000129 | val 0.000141 | val PSNR 42.37 *
+epoch  90/100 | train 0.000133 | val 0.000141 | val PSNR 42.41
+epoch  91/100 | train 0.000127 | val 0.000143 | val PSNR 42.36
+epoch  92/100 | train 0.000127 | val 0.000177 | val PSNR 41.27
+epoch  93/100 | train 0.000132 | val 0.000158 | val PSNR 41.95
+epoch  94/100 | train 0.000125 | val 0.000138 | val PSNR 42.47 *
+epoch  95/100 | train 0.000126 | val 0.000139 | val PSNR 42.47
+epoch  96/100 | train 0.000126 | val 0.000145 | val PSNR 42.21
+epoch  97/100 | train 0.000126 | val 0.000184 | val PSNR 41.33
+epoch  98/100 | train 0.000125 | val 0.000218 | val PSNR 40.54

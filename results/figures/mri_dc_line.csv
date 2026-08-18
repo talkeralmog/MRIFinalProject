@@ -1,0 +1,10 @@
+sampling ratio,seed,DC line acquired,central 5 lines acquired,captured energy,zero-filled PSNR (dB),baseline PSNR (dB),our model PSNR (dB)
+0.2,0,False,1,0.2045,21.51,21.93,39.23
+0.2,1,True,2,0.7205,27.08,28.78,39.92
+0.2,2,False,0,0.0413,20.23,20.35,33.34
+0.3,0,False,1,0.2192,21.61,22.18,40.51
+0.3,1,True,2,0.7522,28.01,30.72,45.81
+0.3,2,False,0,0.0586,20.32,20.49,34.84
+0.5,0,False,2,0.408,22.37,22.96,46.23
+0.5,1,True,3,0.9459,33.39,38.85,50.31
+0.5,2,False,3,0.4236,22.54,23.13,47.88

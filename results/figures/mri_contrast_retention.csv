@@ -1,0 +1,13 @@
+sampling ratio,method,WM/GM contrast,contrast retained,WM-GM CNR,CNR retained,n slices
+0.2,fully sampled reference,0.3451,1.0,91.47,1.0,478
+0.2,zero-filled input,0.2415,0.7,0.61,0.007,478
+0.2,baseline: classical CS,0.3396,0.984,1.2,0.013,478
+0.2,our model: ADMM-Net,0.3163,0.917,20.21,0.221,478
+0.3,fully sampled reference,0.3451,1.0,91.47,1.0,478
+0.3,zero-filled input,0.3134,0.908,0.87,0.01,478
+0.3,baseline: classical CS,0.4237,1.228,1.74,0.019,478
+0.3,our model: ADMM-Net,0.3315,0.961,22.18,0.242,478
+0.5,fully sampled reference,0.3451,1.0,91.47,1.0,478
+0.5,zero-filled input,0.4908,1.422,1.39,0.015,478
+0.5,baseline: classical CS,0.5276,1.529,2.1,0.023,478
+0.5,our model: ADMM-Net,0.3399,0.985,31.49,0.344,478
